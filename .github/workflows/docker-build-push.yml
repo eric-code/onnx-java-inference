@@ -1,0 +1,71 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: harbor.tianyishuju.com
+  BASE_IMAGE: harbor.tianyishuju.com/skyease/onnx-java-inference-base
+  SAMPLE_IMAGE: harbor.tianyishuju.com/skyease/onnx-java-inference-sample
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B package -DskipTests
+
+      - name: Determine image tag
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+          else
+            TAG="${GITHUB_SHA:0:7}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./base
+          push: true
+          tags: |
+            ${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.BASE_IMAGE }}:${{ github.sha }}
+
+      - name: Build and push sample-model image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./sample-model
+          push: true
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
+          tags: |
+            ${{ env.SAMPLE_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.SAMPLE_IMAGE }}:${{ github.sha }}
