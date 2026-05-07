@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+inference:
+  model-dir: /models
+  thread-count: ${INFERENCE_THREAD_COUNT:4}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

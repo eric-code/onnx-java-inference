@@ -1,0 +1,10 @@
+name: sample-model
+version: "1.0"
+description: XGBoost 示例模型
+inputs:
+  - name: float_input
+    type: float32
+    shape: [1, 4]
+outputs:
+  - name: variable
+    type: float32
