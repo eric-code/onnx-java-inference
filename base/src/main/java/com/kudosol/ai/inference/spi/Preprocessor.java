@@ -9,6 +9,13 @@ import java.util.Map;
 public interface Preprocessor {
 
     /**
+     * 初始化，传入模型元数据（输入输出的名称、类型、shape）。
+     * 在 process() 之前调用。
+     */
+    default void init(ModelMeta meta) {
+    }
+
+    /**
      * 将原始请求数据转为 ONNX 模型输入张量。
      *
      * @param inputData 原始请求体字节

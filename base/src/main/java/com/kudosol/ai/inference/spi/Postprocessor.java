@@ -9,6 +9,13 @@ import java.util.Map;
 public interface Postprocessor {
 
     /**
+     * 初始化，传入模型元数据（输入输出的名称、类型、shape）。
+     * 在 process() 之前调用。
+     */
+    default void init(ModelMeta meta) {
+    }
+
+    /**
      * 将 ONNX 模型输出张量转为可序列化的结果。
      *
      * @param output 模型输出名到张量的映射
