@@ -2,6 +2,9 @@ package com.kudosol.ai.inference.engine;
 
 import com.kudosol.ai.inference.spi.Postprocessor;
 import com.kudosol.ai.inference.spi.Preprocessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.DirectoryStream;
@@ -12,6 +15,8 @@ import java.util.List;
 
 public class ModelClassLoader {
 
+    private static final Logger log = LoggerFactory.getLogger(ModelClassLoader.class);
+
     public static Preprocessor loadPreprocessor(Path modelDir) {
         return loadSpi(modelDir, "preprocessor", Preprocessor.class);
     }
@@ -20,11 +25,16 @@ public class ModelClassLoader {
         return loadSpi(modelDir, "postprocessor", Postprocessor.class);
     }
 
+    /**
+     * 尝试从模型子目录加载 SPI 实现。
+     *
+     * @return 找到返回实现实例，找不到返回 null
+     */
     private static <T> T loadSpi(Path modelDir, String subDir, Class<T> spiType) {
         Path spiDir = modelDir.resolve(subDir);
         if (!Files.isDirectory(spiDir)) {
-            throw new IllegalStateException(
-                    "模型目录 %s 下缺少 %s/ 子目录".formatted(modelDir, subDir));
+            log.debug("模型目录 {} 下无 {} 子目录，将使用默认处理器", modelDir.getFileName(), subDir);
+            return null;
         }
 
         List<URL> jars = new ArrayList<>();
@@ -33,12 +43,13 @@ public class ModelClassLoader {
                 jars.add(jar.toUri().toURL());
             }
         } catch (Exception e) {
-            throw new IllegalStateException("扫描 %s 目录失败: %s".formatted(spiDir, e.getMessage()), e);
+            log.warn("扫描 {} 目录失败: {}，将使用默认处理器", spiDir, e.getMessage());
+            return null;
         }
 
         if (jars.isEmpty()) {
-            throw new IllegalStateException(
-                    "%s/ 目录下未找到 jar 文件: %s".formatted(subDir, spiDir));
+            log.debug("{} 目录下无 jar 文件，将使用默认处理器", subDir);
+            return null;
         }
 
         URLClassLoader classLoader = new URLClassLoader(jars.toArray(new URL[0]),
@@ -47,8 +58,8 @@ public class ModelClassLoader {
         java.util.ServiceLoader<T> loader = java.util.ServiceLoader.load(spiType, classLoader);
         T impl = loader.findFirst().orElse(null);
         if (impl == null) {
-            throw new IllegalStateException(
-                    "在 %s 的 jar 中未找到 %s 的实现（请确保 META-INF/services 配置正确）".formatted(spiDir, spiType.getName()));
+            log.warn("在 {} 的 jar 中未找到 {} 的 SPI 实现，将使用默认处理器", spiDir, spiType.getName());
+            return null;
         }
         return impl;
     }

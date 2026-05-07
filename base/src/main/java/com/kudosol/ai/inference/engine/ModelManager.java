@@ -3,14 +3,13 @@ package com.kudosol.ai.inference.engine;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import com.kudosol.ai.inference.config.InferenceProperties;
-import com.kudosol.ai.inference.spi.ModelMeta;
-import com.kudosol.ai.inference.spi.Postprocessor;
-import com.kudosol.ai.inference.spi.Preprocessor;
-import com.kudosol.ai.inference.spi.TensorMeta;
-import jakarta.annotation.PostConstruct;
+import com.kudosol.ai.inference.spi.*;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
@@ -27,7 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ModelManager {
+@Order(2)
+public class ModelManager implements ApplicationRunner {
 
     private static final Set<String> RESERVED_DIRS = Set.of("preprocessor", "postprocessor");
 
@@ -35,8 +35,12 @@ public class ModelManager {
     private final OrtEnvironment env = OrtEnvironment.getEnvironment();
     private final Map<String, ModelContainer> models = new ConcurrentHashMap<>();
 
-    @PostConstruct
-    public void init() {
+    @Override
+    public void run(ApplicationArguments args) {
+        init();
+    }
+
+    private void init() {
         Path modelDir = Path.of(properties.getModelDir());
         if (!Files.isDirectory(modelDir)) {
             log.warn("模型目录不存在: {}", modelDir);
@@ -80,7 +84,20 @@ public class ModelManager {
             OrtSession session = env.createSession(onnxFile.toString(), opts);
 
             Preprocessor preprocessor = ModelClassLoader.loadPreprocessor(dir);
+            if (preprocessor == null) {
+                preprocessor = new DefaultPreprocessor();
+                log.info("模型 [{}] 使用内置默认前处理器", modelName);
+            } else {
+                log.info("模型 [{}] 使用自定义前处理器: {}", modelName, preprocessor.getClass().getName());
+            }
+
             Postprocessor postprocessor = ModelClassLoader.loadPostprocessor(dir);
+            if (postprocessor == null) {
+                postprocessor = new DefaultPostprocessor();
+                log.info("模型 [{}] 使用内置默认后处理器", modelName);
+            } else {
+                log.info("模型 [{}] 使用自定义后处理器: {}", modelName, postprocessor.getClass().getName());
+            }
 
             preprocessor.init(meta);
             postprocessor.init(meta);
