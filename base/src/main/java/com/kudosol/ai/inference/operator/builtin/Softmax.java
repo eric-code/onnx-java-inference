@@ -5,6 +5,21 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * Softmax 概率转换，使用数值稳定算法（减去行最大值后求 exp）。
+ *
+ * <p>2D 输入 [batch, classes] → 逐行 softmax → 返回 float[batch][classes]。
+ * 1D 输入 [classes] → 返回 float[classes]。
+ * 结果写回原字段。
+ *
+ * <p>参数：{@code field}（必填）— 要操作的字段名
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: softmax
+ *     params: { field: logits }
+ * </pre>
+ */
 public class Softmax implements Operator {
 
     @Override

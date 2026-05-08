@@ -4,6 +4,7 @@ server:
 inference:
   model-dir: /models
   thread-count: ${INFERENCE_THREAD_COUNT:4}
+  model-sources: ${MODEL_SOURCES:}
   s3:
     enabled: ${S3_ENABLED:false}
     endpoint: ${S3_ENDPOINT:}
@@ -12,7 +13,6 @@ inference:
     access-key: ${S3_ACCESS_KEY:}
     secret-key: ${S3_SECRET_KEY:}
     path-style-access: ${S3_PATH_STYLE_ACCESS:false}
-    models: ${S3_MODELS:}
 
 management:
   endpoints:

@@ -5,6 +5,23 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 二值化阈值分类，将数值数组按阈值转为 0/1 整数数组。
+ *
+ * <p>值 >= threshold → 1，否则 → 0。结果写回原字段。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要操作的字段名</li>
+ *   <li>{@code value}（必填）— 阈值</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: threshold
+ *     params: { field: score, value: 0.5 }
+ * </pre>
+ */
 public class Threshold implements Operator {
 
     @Override

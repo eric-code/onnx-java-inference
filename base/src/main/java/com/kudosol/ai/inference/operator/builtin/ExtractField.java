@@ -4,6 +4,24 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 从上下文中提取指定字段，支持点号路径访问嵌套对象。
+ *
+ * <p>两种使用场景：
+ * <ul>
+ *   <li>嵌套路径提取：{@code field: payload.features} 从 {@code {payload: {features: [...]}}}
+ *       中提取 features，写回上下文的 key 为路径最后一段</li>
+ *   <li>DAG 分支拆分：在 DAG 管线中声明分支起点，使 inputs 依赖与数据流一致</li>
+ * </ul>
+ *
+ * <p>参数：{@code field}（必填，支持点号路径如 {@code payload.features}）
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: extract_field
+ *     params: { field: payload.features }
+ * </pre>
+ */
 public class ExtractField implements Operator {
 
     @Override

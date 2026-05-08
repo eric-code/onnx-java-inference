@@ -5,6 +5,26 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 数值归一化，支持 z-score (standard) 和 min-max 两种方法。
+ *
+ * <p>对指定字段的数值数组做归一化，结果写回原字段。支持 1D 和 2D 数组，
+ * mean/std/min/max 参数按最后一个维度广播（即每个特征对应一个参数值）。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要归一化的字段名</li>
+ *   <li>{@code method}（默认 "standard"）— "standard" 或 "minmax"</li>
+ *   <li>{@code mean}, {@code std} — standard 方法所需参数</li>
+ *   <li>{@code min}, {@code max} — minmax 方法所需参数</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: normalize
+ *     params: { field: features, method: minmax, min: [0.0, 0.0], max: [1.0, 1.0] }
+ * </pre>
+ */
 public class Normalize implements Operator {
 
     @Override

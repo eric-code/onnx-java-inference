@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build and Push Docker Image
 
 on:
   push:
@@ -6,9 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: harbor.tianyishuju.com
-  BASE_IMAGE: harbor.tianyishuju.com/skyease/onnx-java-inference-base
-  SAMPLE_IMAGE: harbor.tianyishuju.com/skyease/onnx-java-inference-sample
+  REGISTRY: ${{ vars.REGISTRY || 'harbor.tianyishuju.com' }}
+  BASE_IMAGE: ${{ vars.BASE_IMAGE || 'harbor.tianyishuju.com/skyease/onnx-java-inference-base' }}
 
 jobs:
   build-and-push:
@@ -58,14 +57,3 @@ jobs:
           tags: |
             ${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
             ${{ env.BASE_IMAGE }}:${{ github.sha }}
-
-      - name: Build and push sample-model image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./sample-model
-          push: true
-          build-args: |
-            BASE_IMAGE=${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
-          tags: |
-            ${{ env.SAMPLE_IMAGE }}:${{ steps.meta.outputs.tag }}
-            ${{ env.SAMPLE_IMAGE }}:${{ github.sha }}

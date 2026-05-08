@@ -13,4 +13,4 @@ outputs:
 preprocess:
   - op: parse_json
   - op: to_tensor
-    params: { field: float_input, name: float_input, type: float32, shape: [ 1, 4 ] }
+    params: { field: float_input, name: float_input, type: float32, shape: [ -1, 4 ] }

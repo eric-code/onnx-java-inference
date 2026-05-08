@@ -3,8 +3,6 @@ package com.kudosol.ai.inference.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.util.List;
-
 @Data
 @ConfigurationProperties(prefix = "inference.s3")
 public class S3Properties {
@@ -28,9 +26,4 @@ public class S3Properties {
      * Path style access（MinIO 需要设为 true）
      */
     private boolean pathStyleAccess = false;
-
-    /**
-     * 要下载的模型包 S3 key 列表
-     */
-    private List<String> models = List.of();
 }

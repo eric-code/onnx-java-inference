@@ -9,6 +9,22 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+/**
+ * 解析原始请求体为 JSON 结构化数据，将顶层 key 展平写入上下文。
+ *
+ * <p>通常作为预处理管线的第一步，从上下文的 {@code _raw} 字段读取请求体 byte[]，
+ * 解析后将每个顶层字段直接写入上下文（展平模式）。
+ *
+ * <p>参数：无
+ *
+ * <p>示例：请求体 {@code {"features": [1.0, 2.0], "label": "a"}}
+ * → 上下文变为 {@code {features: [1.0, 2.0], label: "a"}}
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: parse_json
+ * </pre>
+ */
 public class ParseJson implements Operator {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

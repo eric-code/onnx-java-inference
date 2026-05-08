@@ -6,6 +6,24 @@ import com.kudosol.ai.inference.operator.Operator;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 将整数索引映射为标签字符串，常用于分类结果解码。
+ *
+ * <p>输入 int[]/long[] 索引数组 → 输出 String[] 标签数组。
+ * 索引超出 labels 范围会抛异常。结果写回原字段。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要操作的字段名</li>
+ *   <li>{@code labels}（必填）— 标签字符串列表，如 ["cat", "dog", "bird"]</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: label_map
+ *     params: { field: output, labels: ["setosa", "versicolor", "virginica"] }
+ * </pre>
+ */
 public class LabelMap implements Operator {
 
     @Override

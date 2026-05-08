@@ -5,6 +5,21 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 类型转换，将数值数组转为指定的目标类型，结果写回原字段。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要转换的字段名</li>
+ *   <li>{@code to}（必填）— 目标类型："float32"、"int64"、"int32"</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: cast
+ *     params: { field: ids, to: int64 }
+ * </pre>
+ */
 public class Cast implements Operator {
 
     @Override

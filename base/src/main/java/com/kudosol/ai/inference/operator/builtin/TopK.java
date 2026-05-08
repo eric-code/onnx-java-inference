@@ -6,6 +6,24 @@ import com.kudosol.ai.inference.operator.Operator;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 取 Top-K 最大值及其索引。
+ *
+ * <p>结果写入两个 key：原字段存放 top-k 值，{@code field_indices} 存放对应索引。
+ * 2D 输入 [batch, classes] → 每行取 top-k → 值为 float[batch*k]，索引为 int[batch*k]。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要操作的字段名</li>
+ *   <li>{@code k}（必填）— 取前 k 个</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: top_k
+ *     params: { field: logits, k: 3 }
+ * </pre>
+ */
 public class TopK implements Operator {
 
     @Override

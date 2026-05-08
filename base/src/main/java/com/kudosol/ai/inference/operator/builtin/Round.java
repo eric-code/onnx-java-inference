@@ -5,6 +5,23 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 数值四舍五入，支持指定小数位数。
+ *
+ * <p>结果写回原字段。默认 decimals=0 为取整。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 要操作的字段名</li>
+ *   <li>{@code decimals}（可选，默认 0）— 保留小数位数</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: round
+ *     params: { field: score, decimals: 2 }
+ * </pre>
+ */
 public class Round implements Operator {
 
     @Override

@@ -13,6 +13,26 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 将数值数组转为 OnnxTensor，写入上下文的 name 键，并移除源 field 键。
+ *
+ * <p>shape 参数中值为 -1 或 0 的维度会根据实际数据自动推断。
+ * 例如 shape: [-1, 4]，输入 2 条数据 → 实际 shape 为 [2, 4]。
+ *
+ * <p>参数：
+ * <ul>
+ *   <li>{@code field}（必填）— 数据来源字段名</li>
+ *   <li>{@code name}（必填）— OnnxTensor 在上下文中的 key，通常与模型输入名一致</li>
+ *   <li>{@code type}（必填）— 张量类型："float32"、"int64"、"int32"</li>
+ *   <li>{@code shape}（可选）— 张量形状列表，动态维度用 -1，省略则从数据推断</li>
+ * </ul>
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: to_tensor
+ *     params: { field: features, name: float_input, type: float32, shape: [-1, 4] }
+ * </pre>
+ */
 public class ToTensor implements Operator {
 
     @Override

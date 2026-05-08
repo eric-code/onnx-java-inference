@@ -5,6 +5,21 @@ import com.kudosol.ai.inference.operator.Operator;
 
 import java.util.Map;
 
+/**
+ * 取最大值索引，常用于分类模型获取预测类别。
+ *
+ * <p>2D 输入 [batch, classes] → 对每行取 argmax → 返回 int[batch]。
+ * 1D 输入 [classes] → 返回 int[1]。
+ * 结果写回原字段。
+ *
+ * <p>参数：{@code field}（必填）— 要操作的字段名
+ *
+ * <p>YAML 声明：
+ * <pre>
+ *   - op: argmax
+ *     params: { field: output }
+ * </pre>
+ */
 public class ArgMax implements Operator {
 
     @Override
