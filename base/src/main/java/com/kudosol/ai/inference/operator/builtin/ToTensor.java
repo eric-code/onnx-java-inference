@@ -72,7 +72,6 @@ public class ToTensor implements Operator {
 
         Map<String, Object> result = new HashMap<>();
         result.put(name, tensor);
-        result.put(field, null);
         return result;
     }
 
