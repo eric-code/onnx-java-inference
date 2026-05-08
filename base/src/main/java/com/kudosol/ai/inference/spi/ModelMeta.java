@@ -13,4 +13,6 @@ public class ModelMeta {
     private String description;
     private List<TensorMeta> inputs = new ArrayList<>();
     private List<TensorMeta> outputs = new ArrayList<>();
+    private List<PipelineStep> preprocess;
+    private List<PipelineStep> postprocess;
 }
