@@ -534,11 +534,9 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 
 声明式 DAG 算子编排系统，替代自定义 JAR 前后处理器。详见 [docs/operator-pipeline.md](docs/operator-pipeline.md)。
 
-### 推理日志 WebSocket 推送
+### ~~推理日志 WebSocket 推送~~ (已完成)
 
-当前推理日志仅输出到标准输出（Docker logs），无法被前端或运维平台实时消费。
-
-计划通过 **STOMP over WebSocket** 将推理日志实时推送给订阅客户端：
+通过 **STOMP over WebSocket** 将推理日志实时推送给订阅客户端：
 
 - **方案选型**：使用 STOMP 协议而非原生 WebSocket，因为日志天然是多主题的（按模型、按级别分流），STOMP 的 pub/sub 语义直接匹配
 - **Spring 集成**：基于 `spring-boot-starter-websocket` + `SimpMessagingTemplate`，几行代码即可广播日志
@@ -546,8 +544,8 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
     - `/topic/logs` — 全局推理日志
     - `/topic/logs/{modelName}` — 按模型过滤的日志
     - `/topic/errors` — 仅错误日志
-- **日志接入**：自定义 Logback Appender，拦截推理相关日志并通过 `SimpMessagingTemplate` 推送
-- **消息格式**：JSON，包含时间戳、模型名、级别、耗时、异常信息等
+- **日志接入**：`InferenceEngine` 在前处理、推理、后处理各阶段通过 `InferenceLogPublisher` 推送结构化日志
+- **消息格式**：JSON，包含时间戳、模型名、阶段、级别、耗时、异常信息等
 
 示例：
 
@@ -559,7 +557,7 @@ const stompClient = Stomp.over(socket);
 stompClient.connect({}, () => {
   stompClient.subscribe('/topic/logs/sample-model', (msg) => {
     const log = JSON.parse(msg.body);
-    console.log(`[${log.level}] ${log.model} - ${log.message} (${log.durationMs}ms)`);
+    console.log(`[${log.level}] ${log.model} - ${log.phase} ${log.message} (${log.durationMs}ms)`);
   });
 });
 ```
