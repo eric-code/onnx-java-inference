@@ -6,12 +6,14 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination 
     && rm app.jar
 
 # --- runtime image ---
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
 # 依赖层（变更最少，缓存命中率最高）
 COPY --from=builder /app/extracted/dependencies/ ./
+# Spring Boot loader 层（JarLauncher 等启动类）
+COPY --from=builder /app/extracted/spring-boot-loader/ ./
 # snapshot 依赖层
 COPY --from=builder /app/extracted/snapshot-dependencies/ ./
 # 应用代码层（变更最多，但体积最小）
@@ -27,4 +29,4 @@ ENV JAVA_OPTS="-Djava.library.path=/app/native"
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -cp \"dependencies:snapshot-dependencies:application\" org.springframework.boot.loader.launch.JarLauncher \"$@\"", "--"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher \"$@\"", "--"]

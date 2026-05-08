@@ -4,7 +4,7 @@ server:
 inference:
   model-dir: /models
   thread-count: ${INFERENCE_THREAD_COUNT:4}
-  model-sources: ${MODEL_SOURCES:}
+  model-sources: ${MODEL_SOURCES:http://58.220.240.50:17008/public-test/sample-model.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=576CPNWGGVD7Q1NOGU0S%2F20260508%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T094758Z&X-Amz-Expires=604800&X-Amz-Security-Token=eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NLZXkiOiI1NzZDUE5XR0dWRDdRMU5PR1UwUyIsImV4cCI6MTc3ODI3NjUyOCwicGFyZW50IjoiYWRtaW4ifQ.ioWND0c4opBbwwk_ThzNgDPbB9xeHBMRMv7_OEmyxj1kVAfQ6NnQ-1G29I5NzYnYK3If5etg_6wBK1XZOCJbgg&X-Amz-SignedHeaders=host&versionId=null&X-Amz-Signature=2d44d4c20864facbb1fd3134e981dd371921a23286349fa37b9fd5b7f6cab687}
   s3:
     enabled: ${S3_ENABLED:false}
     endpoint: ${S3_ENDPOINT:}
