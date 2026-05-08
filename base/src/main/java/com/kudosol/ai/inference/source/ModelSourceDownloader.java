@@ -66,13 +66,14 @@ public class ModelSourceDownloader implements ApplicationRunner {
             s3Client = buildS3Client();
         }
 
-        try {
-            for (String source : inferenceProperties.getModelSources()) {
+        for (String source : inferenceProperties.getModelSources()) {
+            try {
                 downloadAndExtract(source, modelDir, s3Client);
+            } catch (Exception e) {
+                log.warn("模型下载失败，跳过: {} — {}", source, e.getMessage());
             }
-        } catch (Exception e) {
-            throw new IllegalStateException("模型下载失败: " + e.getMessage(), e);
-        } finally {
+        }
+        finally{
             if (s3Client != null) s3Client.close();
         }
     }
