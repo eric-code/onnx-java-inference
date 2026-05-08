@@ -2,7 +2,7 @@ FROM eclipse-temurin:21-jre-alpine AS builder
 
 WORKDIR /app
 COPY target/onnx-java-inference-base-*-exec.jar app.jar
-RUN java -Djarmode=tools extract --layers --launcher --destination extracted app.jar \
+RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination extracted \
     && rm app.jar
 
 # --- runtime image ---
