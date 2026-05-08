@@ -128,10 +128,12 @@ public class ModelSourceDownloader implements ApplicationRunner {
                 .uri(URI.create(url))
                 .GET()
                 .build();
-        HttpResponse<Path> response = client.send(request, HttpResponse.BodyHandlers.ofFile(target));
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
         if (response.statusCode() != 200) {
-            throw new IOException("HTTP 下载失败，状态码: " + response.statusCode());
+            String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+            throw new IOException("HTTP 下载失败，状态码: " + response.statusCode() + "，响应: " + body);
         }
+        Files.write(target, response.body());
     }
 
     private void extract(Path archiveFile, Path modelDir, String modelName) throws IOException {
@@ -224,7 +226,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private String deriveModelName(String source) {
-        String fileName = source.substring(source.lastIndexOf('/') + 1);
+        String fileName = stripQueryString(source.substring(source.lastIndexOf('/') + 1));
         if (fileName.endsWith(".tar.gz")) return fileName.substring(0, fileName.length() - 7);
         if (fileName.endsWith(".tgz")) return fileName.substring(0, fileName.length() - 4);
         if (fileName.endsWith(".zip")) return fileName.substring(0, fileName.length() - 4);
@@ -232,10 +234,15 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private String getTempSuffix(String source) {
-        String lower = source.toLowerCase();
+        String lower = stripQueryString(source).toLowerCase();
         if (lower.endsWith(".zip")) return ".zip";
         if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return ".tar.gz";
         return ".pkg";
+    }
+
+    private String stripQueryString(String s) {
+        int idx = s.indexOf('?');
+        return idx >= 0 ? s.substring(0, idx) : s;
     }
 
     private S3Client buildS3Client() {
