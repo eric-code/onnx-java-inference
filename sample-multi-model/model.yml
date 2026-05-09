@@ -1,0 +1,25 @@
+name: sample-multi-model
+version: "1.0"
+description: 多输入/多输出示例（占位配置，待 model.onnx 准备好后按实际 input/output 名调整）
+
+# ============================================================
+# 注意：以下 dense_features / sparse_features / score / label 均为占位名，
+# 请改成你拿到的 ONNX 模型实际的 input/output 名。
+# 启动时框架会从 model.onnx 读取真实名字，名字不一致 to_tensor 会抛 "字段 X 不存在"。
+# 详细原理见 docs/multi-input-output.md
+# ============================================================
+
+preprocess:
+  - op: parse_json
+  # 多输入：每个 ONNX input 对应一个 to_tensor 步骤，field 必填
+  - op: to_tensor
+    params: { field: dense_features }
+  - op: to_tensor
+    params: { field: sparse_features }
+
+postprocess:
+  # 多输出：每个 ONNX output 单独指定 field 和算子，语义可不同
+  - op: round
+    params: { field: score, decimals: 4 }
+  - op: argmax
+    params: { field: label, axis: 1 }
