@@ -9,9 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -50,18 +48,15 @@ public class HostNetworkService {
     }
 
     public List<ListeningPort> getListeningPorts() {
-        Map<String, String> inodeToProcess = buildInodeToProcessMap();
-
         List<ListeningPort> result = new ArrayList<>();
-        parseNetFile("tcp", "TCP", result, inodeToProcess);
-        parseNetFile("tcp6", "TCP6", result, inodeToProcess);
-        parseNetFile("udp", "UDP", result, inodeToProcess);
-        parseNetFile("udp6", "UDP6", result, inodeToProcess);
+        parseNetFile("tcp", "TCP", result);
+        parseNetFile("tcp6", "TCP6", result);
+        parseNetFile("udp", "UDP", result);
+        parseNetFile("udp6", "UDP6", result);
         return result;
     }
 
-    private void parseNetFile(String filename, String protocol, List<ListeningPort> result,
-                              Map<String, String> inodeToProcess) {
+    private void parseNetFile(String filename, String protocol, List<ListeningPort> result) {
         Path path = Path.of(props.getBasePath(), "1", "net", filename);
         if (!Files.exists(path)) {
             // fallback to /proc/net if /proc/1/net not available
@@ -91,67 +86,12 @@ public class HostNetworkService {
 
                     String ip = parseIp(addrParts[0], filename.endsWith("6"));
                     int port = parseHex(addrParts[1]);
-                    String processName = inodeToProcess.getOrDefault(parts[9], "");
 
-                    result.add(new ListeningPort(
-                            protocol,
-                            ip,
-                            port,
-                            processName
-                    ));
+                    result.add(new ListeningPort(protocol, ip, port));
                 }
             }
         } catch (IOException e) {
             log.error("Failed to read host proc net file: {}", path, e);
-        }
-    }
-
-    private Map<String, String> buildInodeToProcessMap() {
-        Map<String, String> inodeToProcess = new HashMap<>();
-        Path procDir = Path.of(props.getBasePath());
-
-        if (!Files.exists(procDir) || !Files.isDirectory(procDir)) {
-            return inodeToProcess;
-        }
-
-        try (var pidStream = Files.list(procDir)) {
-            pidStream.filter(p -> p.getFileName().toString().matches("\\d+"))
-                    .forEach(pidPath -> resolveSocketInodes(pidPath, inodeToProcess));
-        } catch (IOException e) {
-            log.error("Failed to list host proc directory: {}", procDir, e);
-        }
-
-        return inodeToProcess;
-    }
-
-    private void resolveSocketInodes(Path pidPath, Map<String, String> inodeToProcess) {
-        String pid = pidPath.getFileName().toString();
-
-        String processName = "";
-        Path commPath = pidPath.resolve("comm");
-        if (Files.exists(commPath)) {
-            try {
-                processName = Files.readString(commPath).trim();
-            } catch (IOException ignored) {
-            }
-        }
-
-        Path fdDir = pidPath.resolve("fd");
-        if (!Files.isDirectory(fdDir)) return;
-
-        String owner = processName + "/" + pid;
-        try (var fdStream = Files.list(fdDir)) {
-            fdStream.forEach(fdPath -> {
-                try {
-                    String target = Files.readSymbolicLink(fdPath).toString();
-                    if (target.startsWith("socket:[")) {
-                        String inode = target.substring(9, target.length() - 1);
-                        inodeToProcess.putIfAbsent(inode, owner);
-                    }
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
         }
     }
 }
