@@ -80,14 +80,6 @@ ModelManager (@Order(2))
     └── model.yml
 ```
 
-通过 URL 中的模型名路由到对应模型：
-
-```bash
-curl -X POST http://localhost:8080/infer/model-a \
-  -H "Content-Type: application/octet-stream" \
-  -d '{"float_input": [1.0, 2.0, 3.0, 4.0]}'
-```
-
 ### 部署形态
 
 | 部署方式      | 说明              | 适合场景           |
