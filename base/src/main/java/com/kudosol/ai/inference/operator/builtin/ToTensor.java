@@ -5,6 +5,9 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import com.kudosol.ai.inference.operator.ArrayUtils;
 import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.operator.OperatorContextSupport;
+import com.kudosol.ai.inference.spi.ModelMeta;
+import com.kudosol.ai.inference.spi.TensorMeta;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -14,23 +17,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 将数值数组转为 OnnxTensor，写入上下文的 name 键，并移除源 field 键。
+ * 将数值数组转为 OnnxTensor，写入上下文以 ONNX input 名为 key，并移除源 field 键。
  *
- * <p>shape 参数中值为 -1 或 0 的维度会根据实际数据自动推断。
- * 例如 shape: [-1, 4]，输入 2 条数据 → 实际 shape 为 [2, 4]。
+ * <p>name / type / shape 全部从 ONNX 模型元数据自动推断，yml 中不允许手工配置。
+ * shape 中的动态维（-1 / 0）按实际数据推断。
  *
  * <p>参数：
  * <ul>
- *   <li>{@code field}（必填）— 数据来源字段名</li>
- *   <li>{@code name}（必填）— OnnxTensor 在上下文中的 key，通常与模型输入名一致</li>
- *   <li>{@code type}（必填）— 张量类型："float32"、"int64"、"int32"</li>
- *   <li>{@code shape}（可选）— 张量形状列表，动态维度用 -1，省略则从数据推断</li>
+ *   <li>{@code field}（可选）— 数据来源字段名；当模型只有 1 个 input 时省略，默认为唯一 input 名</li>
  * </ul>
  *
  * <p>YAML 声明：
  * <pre>
+ *   - op: to_tensor                     # 单输入模型可省略 params
  *   - op: to_tensor
- *     params: { field: features, name: float_input, type: float32, shape: [-1, 4] }
+ *     params: { field: float_input }    # 多输入或字段名与 ONNX input 名不同时显式声明
  * </pre>
  */
 public class ToTensor implements Operator {
@@ -42,17 +43,16 @@ public class ToTensor implements Operator {
 
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
-        String field = (String) params.get("field");
-        String name = (String) params.get("name");
-        String type = (String) params.get("type");
-        if (field == null) throw new IllegalArgumentException("to_tensor 缺少 field 参数");
-        if (name == null) throw new IllegalArgumentException("to_tensor 缺少 name 参数");
-        if (type == null) throw new IllegalArgumentException("to_tensor 缺少 type 参数");
+        String field = OperatorContextSupport.resolveInputField(input, params, "to_tensor");
 
         Object value = input.get(field);
         if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
 
-        long[] shape = parseShape(params.get("shape"), value);
+        ModelMeta meta = OperatorContextSupport.meta(input);
+        TensorMeta tensorMeta = OperatorContextSupport.findInput(meta, field);
+        String type = tensorMeta.getType();
+
+        long[] shape = parseShape(tensorMeta.getShape(), value);
         OrtEnvironment env = OrtEnvironment.getEnvironment();
 
         OnnxTensor tensor;
@@ -71,7 +71,7 @@ public class ToTensor implements Operator {
         }
 
         Map<String, Object> result = new HashMap<>();
-        result.put(name, tensor);
+        result.put(field, tensor);
         return result;
     }
 
