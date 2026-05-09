@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.engine;
 
+import com.kudosol.ai.inference.operator.Operator;
 import com.kudosol.ai.inference.spi.Postprocessor;
 import com.kudosol.ai.inference.spi.Preprocessor;
 import org.slf4j.Logger;
@@ -25,11 +26,10 @@ public class ModelClassLoader {
         return loadSpi(modelDir, "postprocessor", Postprocessor.class);
     }
 
-    /**
-     * 尝试从模型子目录加载 SPI 实现。
-     *
-     * @return 找到返回实现实例，找不到返回 null
-     */
+    public static List<Operator> loadOperators(Path modelDir) {
+        return loadAllSpi(modelDir, "operators", Operator.class);
+    }
+
     private static <T> T loadSpi(Path modelDir, String subDir, Class<T> spiType) {
         Path spiDir = modelDir.resolve(subDir);
         if (!Files.isDirectory(spiDir)) {
@@ -62,5 +62,38 @@ public class ModelClassLoader {
             return null;
         }
         return impl;
+    }
+
+    private static <T> List<T> loadAllSpi(Path modelDir, String subDir, Class<T> spiType) {
+        Path spiDir = modelDir.resolve(subDir);
+        if (!Files.isDirectory(spiDir)) {
+            return List.of();
+        }
+
+        List<URL> jars = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(spiDir, "*.jar")) {
+            for (Path jar : stream) {
+                jars.add(jar.toUri().toURL());
+            }
+        } catch (Exception e) {
+            log.warn("扫描 {} 目录失败: {}", spiDir, e.getMessage());
+            return List.of();
+        }
+
+        if (jars.isEmpty()) {
+            return List.of();
+        }
+
+        URLClassLoader classLoader = new URLClassLoader(jars.toArray(new URL[0]),
+                ModelClassLoader.class.getClassLoader());
+
+        java.util.ServiceLoader<T> loader = java.util.ServiceLoader.load(spiType, classLoader);
+        List<T> impls = new ArrayList<>();
+        loader.forEach(impls::add);
+
+        if (impls.isEmpty()) {
+            log.warn("在 {} 的 jar 中未找到 {} 的 SPI 实现", spiDir, spiType.getName());
+        }
+        return impls;
     }
 }

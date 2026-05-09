@@ -1,8 +1,11 @@
 package com.kudosol.ai.inference.engine;
 
+import ai.onnxruntime.NodeInfo;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
+import ai.onnxruntime.TensorInfo;
 import com.kudosol.ai.inference.config.InferenceProperties;
+import com.kudosol.ai.inference.operator.Operator;
 import com.kudosol.ai.inference.operator.OperatorRegistry;
 import com.kudosol.ai.inference.operator.PipelinePostprocessor;
 import com.kudosol.ai.inference.operator.PipelinePreprocessor;
@@ -29,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Order(2)
 public class ModelManager implements ApplicationRunner {
 
-    private static final Set<String> RESERVED_DIRS = Set.of("preprocessor", "postprocessor");
+    private static final Set<String> RESERVED_DIRS = Set.of("preprocessor", "postprocessor", "operators");
 
     private final InferenceProperties properties;
     private final OperatorRegistry operatorRegistry;
@@ -84,11 +87,14 @@ public class ModelManager implements ApplicationRunner {
             opts.setIntraOpNumThreads(properties.getThreadCount());
             OrtSession session = env.createSession(onnxFile.toString(), opts);
 
+            populateMetaFromOnnx(meta, session);
+
             // Preprocessor: model.yml 算子管线 > SPI JAR > 自动生成管线
-            Preprocessor preprocessor = resolvePreprocessor(dir, meta, modelName);
+            OperatorRegistry modelRegistry = resolveModelRegistry(dir, modelName);
+            Preprocessor preprocessor = resolvePreprocessor(dir, meta, modelName, modelRegistry);
 
             // Postprocessor: model.yml 算子管线 > SPI JAR > 自动生成管线
-            Postprocessor postprocessor = resolvePostprocessor(dir, meta, modelName);
+            Postprocessor postprocessor = resolvePostprocessor(dir, meta, modelName, modelRegistry);
 
             preprocessor.init(meta);
             postprocessor.init(meta);
@@ -107,11 +113,20 @@ public class ModelManager implements ApplicationRunner {
         }
     }
 
-    private Preprocessor resolvePreprocessor(Path dir, ModelMeta meta, String modelName) {
+    private OperatorRegistry resolveModelRegistry(Path dir, String modelName) {
+        List<Operator> customOps = ModelClassLoader.loadOperators(dir);
+        if (customOps.isEmpty()) {
+            return operatorRegistry;
+        }
+        log.info("模型 [{}] 加载 {} 个自定义算子", modelName, customOps.size());
+        return operatorRegistry.withOperators(customOps);
+    }
+
+    private Preprocessor resolvePreprocessor(Path dir, ModelMeta meta, String modelName, OperatorRegistry registry) {
         // 1. model.yml 声明了算子管线
         if (meta.getPreprocess() != null && !meta.getPreprocess().isEmpty()) {
             log.info("模型 [{}] 使用算子管线前处理器 ({} 步)", modelName, meta.getPreprocess().size());
-            return new PipelinePreprocessor(meta.getPreprocess(), operatorRegistry);
+            return new PipelinePreprocessor(meta.getPreprocess(), registry);
         }
 
         // 2. SPI JAR 自定义前处理器
@@ -124,14 +139,14 @@ public class ModelManager implements ApplicationRunner {
         // 3. 根据 ModelMeta.inputs 自动生成管线
         List<PipelineStep> autoSteps = buildAutoPreprocessSteps(meta);
         log.info("模型 [{}] 使用自动生成管线前处理器 ({} 步)", modelName, autoSteps.size());
-        return new PipelinePreprocessor(autoSteps, operatorRegistry);
+        return new PipelinePreprocessor(autoSteps, registry);
     }
 
-    private Postprocessor resolvePostprocessor(Path dir, ModelMeta meta, String modelName) {
+    private Postprocessor resolvePostprocessor(Path dir, ModelMeta meta, String modelName, OperatorRegistry registry) {
         // 1. model.yml 声明了算子管线
         if (meta.getPostprocess() != null && !meta.getPostprocess().isEmpty()) {
             log.info("模型 [{}] 使用算子管线后处理器 ({} 步)", modelName, meta.getPostprocess().size());
-            return new PipelinePostprocessor(meta.getPostprocess(), operatorRegistry);
+            return new PipelinePostprocessor(meta.getPostprocess(), registry);
         }
 
         // 2. SPI JAR 自定义后处理器
@@ -143,7 +158,7 @@ public class ModelManager implements ApplicationRunner {
 
         // 3. 空管线：直接取 tensor.getValue() 返回
         log.info("模型 [{}] 使用自动生成管线后处理器 (直通)", modelName);
-        return new PipelinePostprocessor(List.of(), operatorRegistry);
+        return new PipelinePostprocessor(List.of(), registry);
     }
 
     private List<PipelineStep> buildAutoPreprocessSteps(ModelMeta meta) {
@@ -160,11 +175,6 @@ public class ModelManager implements ApplicationRunner {
             toTensorStep.setOp("to_tensor");
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("field", tensorMeta.getName());
-            params.put("name", tensorMeta.getName());
-            params.put("type", tensorMeta.getType());
-            if (tensorMeta.getShape() != null) {
-                params.put("shape", tensorMeta.getShape());
-            }
             toTensorStep.setParams(params);
             toTensorStep.setInputs(List.of("auto_parse"));
             steps.add(toTensorStep);
@@ -173,22 +183,40 @@ public class ModelManager implements ApplicationRunner {
         return steps;
     }
 
+    private void populateMetaFromOnnx(ModelMeta meta, OrtSession session) throws Exception {
+        meta.setInputs(toTensorMetas(session.getInputInfo()));
+        meta.setOutputs(toTensorMetas(session.getOutputInfo()));
+    }
+
+    private List<TensorMeta> toTensorMetas(Map<String, NodeInfo> nodeInfos) {
+        List<TensorMeta> result = new ArrayList<>();
+        for (Map.Entry<String, NodeInfo> entry : nodeInfos.entrySet()) {
+            String name = entry.getKey();
+            Object info = entry.getValue().getInfo();
+            if (info instanceof TensorInfo ti) {
+                String type = OnnxTypeMapper.toYmlType(ti.type);
+                List<Long> shape = Arrays.stream(ti.getShape()).boxed().toList();
+                result.add(new TensorMeta(name, type, shape));
+            } else {
+                result.add(new TensorMeta(name, null, null));
+            }
+        }
+        return result;
+    }
+
     @SuppressWarnings("unchecked")
     private ModelMeta parseMeta(Map<String, Object> raw) {
+        if (raw.containsKey("inputs")) {
+            throw new IllegalStateException("model.yml 不允许声明 inputs，该字段已自动从 ONNX 元数据推断，请删除");
+        }
+        if (raw.containsKey("outputs")) {
+            throw new IllegalStateException("model.yml 不允许声明 outputs，该字段已自动从 ONNX 元数据推断，请删除");
+        }
+
         ModelMeta meta = new ModelMeta();
         meta.setName((String) raw.getOrDefault("name", ""));
         meta.setVersion((String) raw.getOrDefault("version", "unknown"));
         meta.setDescription((String) raw.getOrDefault("description", ""));
-
-        List<Map<String, Object>> rawInputs = (List<Map<String, Object>>) raw.getOrDefault("inputs", List.of());
-        for (Map<String, Object> in : rawInputs) {
-            meta.getInputs().add(parseTensorMeta(in));
-        }
-
-        List<Map<String, Object>> rawOutputs = (List<Map<String, Object>>) raw.getOrDefault("outputs", List.of());
-        for (Map<String, Object> out : rawOutputs) {
-            meta.getOutputs().add(parseTensorMeta(out));
-        }
 
         List<Map<String, Object>> rawPreprocess = (List<Map<String, Object>>) raw.get("preprocess");
         if (rawPreprocess != null && !rawPreprocess.isEmpty()) {
@@ -214,23 +242,16 @@ public class ModelManager implements ApplicationRunner {
         step.setOp((String) raw.get("op"));
         step.setParams((Map<String, Object>) raw.get("params"));
         step.setInputs((List<String>) raw.get("inputs"));
-        return step;
-    }
 
-    @SuppressWarnings("unchecked")
-    private TensorMeta parseTensorMeta(Map<String, Object> raw) {
-        TensorMeta tm = new TensorMeta();
-        tm.setName((String) raw.get("name"));
-        tm.setType((String) raw.get("type"));
-
-        Object shapeObj = raw.get("shape");
-        if (shapeObj instanceof List<?> shapeList) {
-            tm.setShape(shapeList.stream()
-                    .map(v -> ((Number) v).longValue())
-                    .toList());
+        if ("to_tensor".equals(step.getOp()) && step.getParams() != null) {
+            for (String forbidden : List.of("name", "type", "shape")) {
+                if (step.getParams().containsKey(forbidden)) {
+                    throw new IllegalStateException(
+                            "to_tensor.params 不允许声明 " + forbidden + "，已自动从 ONNX 元数据推断");
+                }
+            }
         }
-
-        return tm;
+        return step;
     }
 
     private boolean isReservedDir(Path dir) {

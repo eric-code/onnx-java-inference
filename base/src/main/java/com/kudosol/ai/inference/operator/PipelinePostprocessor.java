@@ -15,6 +15,7 @@ public class PipelinePostprocessor implements Postprocessor {
     private final List<PipelineStep> steps;
     private final OperatorRegistry registry;
     private final PipelineExecutor executor;
+    private ModelMeta meta;
 
     public PipelinePostprocessor(List<PipelineStep> steps, OperatorRegistry registry) {
         this.steps = steps;
@@ -27,6 +28,7 @@ public class PipelinePostprocessor implements Postprocessor {
 
     @Override
     public void init(ModelMeta meta) {
+        this.meta = meta;
     }
 
     @Override
@@ -36,6 +38,7 @@ public class PipelinePostprocessor implements Postprocessor {
         for (Map.Entry<String, OnnxTensor> entry : output.entrySet()) {
             context.put(entry.getKey(), entry.getValue().getValue());
         }
+        if (meta != null) context.put(OperatorContextSupport.META_KEY, meta);
 
         executor.execute(steps, context, registry);
 

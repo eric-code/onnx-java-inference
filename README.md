@@ -56,10 +56,17 @@ ModelManager (@Order(2))
 
 模型加载时，前后处理器按以下优先级解析：
 
-1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 算子编排步骤，框架自动构建
-   PipelinePreprocessor / PipelinePostprocessor
+1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 算子编排步骤，框架自动构建 PipelinePreprocessor / PipelinePostprocessor
 2. **SPI JAR**：模型目录下存在 `preprocessor/` 或 `postprocessor/` 子目录且包含 jar 时，通过 ServiceLoader 加载自定义实现
 3. **自动生成 pipeline**：根据 `model.yml` 的 inputs 定义自动生成 `parse_json` → `to_tensor` 的前处理 pipeline，输出直接透传
+
+### 三种扩展方式对比
+
+| 扩展方式             | 粒度   | 需要写 Java | 适用场景                                 |
+|------------------|------|---------|----------------------------------------|
+| model.yml 内置算子  | 单步骤  | 否       | 常见前后处理（JSON 解析、归一化、分类等）               |
+| model.yml + 自定义算子 | 单步骤  | 是       | 内置算子不满足需求（自定义激活函数、特殊数学变换等）           |
+| SPI JAR 前后处理器   | 整体替换 | 是       | 完全自定义前后处理逻辑（如图像 resize、文本 tokenize 等） |
 
 ### 多模型加载
 
@@ -73,6 +80,8 @@ ModelManager (@Order(2))
 ├── model-b/          # 自动加载
 │   ├── model.onnx
 │   ├── model.yml          # 含 preprocess/postprocess pipeline 定义
+│   ├── operators/         # 可选，自定义算子 JAR（仅对该模型可见）
+│   │   └── my-operator.jar
 │   ├── preprocessor/      # 可选，SPI JAR 优先于自动生成
 │   └── postprocessor/
 └── model-c/          # 自动加载
@@ -148,9 +157,13 @@ onnx-java-inference/
 │           ├── ModelMeta.java               # 模型元数据
 │           ├── TensorMeta.java              # 张量元数据
 │           └── PipelineStep.java            # 算子编排步骤定义
-└── sample-model/                            # 示例模型
+└── sample-model/                            # 示例模型（含自定义算子）
+    ├── pom.xml
+    ├── Dockerfile
+    ├── model.yml
     ├── model.onnx
-    └── model.yml
+    └── src/main/java/.../sample/operator/
+        └── SigmoidOperator.java            # 自定义 sigmoid 算子示例
 ```
 
 ## API
@@ -347,7 +360,110 @@ COPY model.onnx /models/my-model/model.onnx
 COPY model.yml /models/my-model/model.yml
 ```
 
-### 方式二：使用 SPI JAR 自定义前后处理器
+### 方式二：使用自定义算子
+
+当内置算子不满足需求时（如自定义激活函数、特殊数学变换），可实现 `Operator` 接口编写自定义算子，放到模型目录的 `operators/` 下。自定义算子只对声明它的模型可见，不影响其他模型。
+
+#### 1. 创建 Maven 项目
+
+```xml
+<dependency>
+    <groupId>com.kudosol.ai</groupId>
+    <artifactId>onnx-java-inference-base</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+#### 2. 实现 Operator 接口
+
+以 `sigmoid` 算子为例：
+
+```java
+package com.example.myModel.operator;
+
+import com.kudosol.ai.inference.operator.ArrayUtils;
+import com.kudosol.ai.inference.operator.Operator;
+import java.util.HashMap;
+import java.util.Map;
+
+public class SigmoidOperator implements Operator {
+
+    @Override
+    public String name() {
+        return "sigmoid";
+    }
+
+    @Override
+    public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
+        String field = (String) params.get("field");
+        Object value = input.get(field);
+
+        double[] data = ArrayUtils.flattenToDouble(value);
+        for (int i = 0; i < data.length; i++) {
+            data[i] = 1.0 / (1.0 + Math.exp(-data[i]));
+        }
+
+        return Map.of(field, data);
+    }
+}
+```
+
+#### 3. 配置 ServiceLoader
+
+创建 `META-INF/services/com.kudosol.ai.inference.operator.Operator`：
+
+```
+com.example.myModel.operator.SigmoidOperator
+```
+
+#### 4. 在 model.yml 中使用
+
+```yaml
+name: my-model
+version: "1.0"
+inputs:
+  - name: input
+    type: float32
+    shape: [-1, 4]
+outputs:
+  - name: output
+    type: float32
+preprocess:
+  - op: parse_json
+  - op: to_tensor
+    params: { field: input, name: input, type: float32, shape: [-1, 4] }
+postprocess:
+  - op: sigmoid
+    params: { field: output }
+```
+
+#### 5. 构建与部署
+
+```bash
+# 编译自定义算子 jar
+mvn clean package -DskipTests
+
+# 构建模型镜像
+docker build -t my-model:latest .
+```
+
+Dockerfile：
+
+```dockerfile
+FROM harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
+COPY model.onnx /models/my-model/model.onnx
+COPY model.yml /models/my-model/model.yml
+COPY target/my-operator-*.jar /models/my-model/operators/
+```
+
+自定义算子 jar 放到模型的 `operators/` 目录下，框架通过 ServiceLoader 自动发现。可放置多个 jar，每个 jar 可包含多个 Operator 实现。
+
+#### 完整示例
+
+项目 `sample-model` 包含一个完整的自定义算子示例，参见 `sample-model/` 目录。
+
+### 方式三：使用 SPI JAR 自定义前后处理器
 
 适用于需要特殊逻辑的模型（如图像 resize/normalize、文本 tokenize 等）。
 
@@ -461,9 +577,11 @@ my-model.tar.gz
 └── my-model/
     ├── model.onnx
     ├── model.yml
-    ├── preprocessor/          ← 可选
+    ├── operators/             ← 可选，自定义算子 JAR
+    │   └── my-operator.jar
+    ├── preprocessor/          ← 可选，SPI 前处理器 JAR
     │   └── preprocessor.jar
-    └── postprocessor/         ← 可选
+    └── postprocessor/         ← 可选，SPI 后处理器 JAR
         └── postprocessor.jar
 ```
 
@@ -488,6 +606,19 @@ docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest .
 
 # 3. 推送到 Harbor
 docker push harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
+```
+
+### 构建示例模型镜像（含自定义算子）
+
+```bash
+# 1. 编译自定义算子 jar
+mvn clean package -pl sample-model -am -DskipTests
+
+# 2. 构建模型 Docker 镜像
+docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-sample:latest ./sample-model
+
+# 3. 推送到 Harbor
+docker push harbor.tianyishuju.com/skyease/onnx-java-inference-sample:latest
 ```
 
 ### 运行

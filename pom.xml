@@ -10,6 +10,7 @@
 
     <modules>
         <module>base</module>
+        <module>sample-model</module>
     </modules>
 
     <properties>

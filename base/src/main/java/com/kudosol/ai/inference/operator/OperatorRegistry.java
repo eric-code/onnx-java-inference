@@ -5,6 +5,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,5 +54,19 @@ public class OperatorRegistry {
 
     public boolean contains(String name) {
         return operators.containsKey(name);
+    }
+
+    /**
+     * 创建包含自定义算子的派生 Registry，自定义算子可覆盖同名内置算子。
+     * 原 Registry 不受影响。
+     */
+    public OperatorRegistry withOperators(Iterable<Operator> customOperators) {
+        OperatorRegistry derived = new OperatorRegistry();
+        derived.operators.putAll(this.operators);
+        for (Operator op : customOperators) {
+            log.info("加载模型自定义算子: {} ({})", op.name(), op.getClass().getName());
+            derived.register(op);
+        }
+        return derived;
     }
 }

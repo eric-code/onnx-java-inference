@@ -16,6 +16,7 @@ public class PipelinePreprocessor implements Preprocessor {
     private final List<PipelineStep> steps;
     private final OperatorRegistry registry;
     private final PipelineExecutor executor;
+    private ModelMeta meta;
 
     public PipelinePreprocessor(List<PipelineStep> steps, OperatorRegistry registry) {
         this.steps = steps;
@@ -26,6 +27,7 @@ public class PipelinePreprocessor implements Preprocessor {
 
     @Override
     public void init(ModelMeta meta) {
+        this.meta = meta;
     }
 
     @Override
@@ -33,6 +35,7 @@ public class PipelinePreprocessor implements Preprocessor {
         Map<String, Object> context = new ConcurrentHashMap<>();
         context.put("_raw", inputData);
         context.put("_params", params);
+        if (meta != null) context.put(OperatorContextSupport.META_KEY, meta);
 
         try {
             executor.execute(steps, context, registry);
