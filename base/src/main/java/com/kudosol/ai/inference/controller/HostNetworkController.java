@@ -17,7 +17,7 @@ public class HostNetworkController {
 
     private final HostNetworkService hostNetworkService;
 
-    @GetMapping("/listening-ports")
+    @GetMapping("/ports")
     public Map<String, Object> getListeningPorts() {
         List<ListeningPort> ports = hostNetworkService.getListeningPorts();
         return Map.of(
