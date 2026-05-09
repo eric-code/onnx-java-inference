@@ -58,3 +58,4 @@ jobs:
           tags: |
             ${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
             ${{ env.BASE_IMAGE }}:${{ github.sha }}
+            ${{ env.BASE_IMAGE }}:latest
