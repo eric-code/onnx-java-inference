@@ -42,6 +42,7 @@ public class PipelinePostprocessor implements Postprocessor {
 
         executor.execute(steps, context, registry);
 
+        context.remove(OperatorContextSupport.META_KEY);
         return new LinkedHashMap<>(context);
     }
 }
