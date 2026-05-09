@@ -79,12 +79,31 @@ public class ToTensor implements Operator {
     private long[] parseShape(Object shapeObj, Object value) {
         if (shapeObj instanceof List<?> list) {
             long[] shape = list.stream().mapToLong(v -> ((Number) v).longValue()).toArray();
-            long[] inferred = ArrayUtils.inferShape(value);
+
+            int dynamicCount = 0;
+            long knownProduct = 1;
+            int dynamicIndex = -1;
             for (int i = 0; i < shape.length; i++) {
-                if (shape[i] <= 0 && i < inferred.length) {
-                    shape[i] = inferred[i];
+                if (shape[i] <= 0) {
+                    dynamicCount++;
+                    dynamicIndex = i;
+                } else {
+                    knownProduct *= shape[i];
                 }
             }
+
+            if (dynamicCount == 1) {
+                long totalElements = ArrayUtils.flattenToDouble(value).length;
+                shape[dynamicIndex] = totalElements / knownProduct;
+            } else if (dynamicCount > 1) {
+                long[] inferred = ArrayUtils.inferShape(value);
+                for (int i = 0; i < shape.length; i++) {
+                    if (shape[i] <= 0 && i < inferred.length) {
+                        shape[i] = inferred[i];
+                    }
+                }
+            }
+
             return shape;
         }
         return ArrayUtils.inferShape(value);
