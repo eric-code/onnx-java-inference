@@ -55,6 +55,8 @@ jobs:
         with:
           context: ./base
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.BASE_IMAGE }}:${{ steps.meta.outputs.tag }}
             ${{ env.BASE_IMAGE }}:${{ github.sha }}
