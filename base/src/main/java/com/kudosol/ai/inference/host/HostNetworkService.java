@@ -62,10 +62,14 @@ public class HostNetworkService {
 
     private void parseNetFile(String filename, String protocol, List<ListeningPort> result,
                               Map<String, String> inodeToProcess) {
-        Path path = Path.of(props.getBasePath(), "net", filename);
+        Path path = Path.of(props.getBasePath(), "1", "net", filename);
         if (!Files.exists(path)) {
-            log.warn("Host proc net file not found: {}", path);
-            return;
+            // fallback to /proc/net if /proc/1/net not available
+            path = Path.of(props.getBasePath(), "net", filename);
+            if (!Files.exists(path)) {
+                log.warn("Host proc net file not found: {}", path);
+                return;
+            }
         }
         try {
             List<String> lines = Files.readAllLines(path);
