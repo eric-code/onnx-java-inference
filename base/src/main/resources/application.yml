@@ -14,6 +14,9 @@ inference:
     secret-key: ${S3_SECRET_KEY:}
     path-style-access: ${S3_PATH_STYLE_ACCESS:false}
 
+host-proc:
+  base-path: ${HOST_PROC_PATH:/host/proc}
+
 management:
   endpoints:
     web:
