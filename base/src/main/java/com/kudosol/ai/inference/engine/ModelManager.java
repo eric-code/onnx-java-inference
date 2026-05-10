@@ -74,7 +74,7 @@ public class ModelManager implements ApplicationRunner {
             }
             ModelMeta meta;
             try (var is = Files.newInputStream(metaFile)) {
-                meta = parseMeta(new Yaml().load(is));
+                meta = parseMeta(modelName, new Yaml().load(is));
             }
 
             Path onnxFile = dir.resolve("model.onnx");
@@ -205,12 +205,12 @@ public class ModelManager implements ApplicationRunner {
     }
 
     @SuppressWarnings("unchecked")
-    private ModelMeta parseMeta(Map<String, Object> raw) {
+    private ModelMeta parseMeta(String modelName, Map<String, Object> raw) {
         if (raw.containsKey("inputs")) {
-            throw new IllegalStateException("model.yml 不允许声明 inputs，该字段已自动从 ONNX 元数据推断，请删除");
+            log.warn("模型 [{}] model.yml 中的 inputs 字段已废弃，由 ONNX 元数据自动推断，建议删除", modelName);
         }
         if (raw.containsKey("outputs")) {
-            throw new IllegalStateException("model.yml 不允许声明 outputs，该字段已自动从 ONNX 元数据推断，请删除");
+            log.warn("模型 [{}] model.yml 中的 outputs 字段已废弃，由 ONNX 元数据自动推断，建议删除", modelName);
         }
 
         ModelMeta meta = new ModelMeta();
@@ -221,14 +221,14 @@ public class ModelManager implements ApplicationRunner {
         List<Map<String, Object>> rawPreprocess = (List<Map<String, Object>>) raw.get("preprocess");
         if (rawPreprocess != null && !rawPreprocess.isEmpty()) {
             meta.setPreprocess(rawPreprocess.stream()
-                    .map(this::parsePipelineStep)
+                    .map(s -> parsePipelineStep(modelName, s))
                     .toList());
         }
 
         List<Map<String, Object>> rawPostprocess = (List<Map<String, Object>>) raw.get("postprocess");
         if (rawPostprocess != null && !rawPostprocess.isEmpty()) {
             meta.setPostprocess(rawPostprocess.stream()
-                    .map(this::parsePipelineStep)
+                    .map(s -> parsePipelineStep(modelName, s))
                     .toList());
         }
 
@@ -236,7 +236,7 @@ public class ModelManager implements ApplicationRunner {
     }
 
     @SuppressWarnings("unchecked")
-    private PipelineStep parsePipelineStep(Map<String, Object> raw) {
+    private PipelineStep parsePipelineStep(String modelName, Map<String, Object> raw) {
         PipelineStep step = new PipelineStep();
         step.setId((String) raw.get("id"));
         step.setOp((String) raw.get("op"));
@@ -246,8 +246,8 @@ public class ModelManager implements ApplicationRunner {
         if ("to_tensor".equals(step.getOp()) && step.getParams() != null) {
             for (String forbidden : List.of("name", "type", "shape")) {
                 if (step.getParams().containsKey(forbidden)) {
-                    throw new IllegalStateException(
-                            "to_tensor.params 不允许声明 " + forbidden + "，已自动从 ONNX 元数据推断");
+                    log.warn("模型 [{}] model.yml 中 to_tensor.params.{} 已废弃，由 ONNX 元数据自动推断，建议删除",
+                            modelName, forbidden);
                 }
             }
         }
