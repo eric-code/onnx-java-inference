@@ -58,7 +58,7 @@ ModelManager (@Order(2))
 
 1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 算子编排步骤，框架自动构建 PipelinePreprocessor / PipelinePostprocessor
 2. **SPI JAR**：模型目录下存在 `preprocessor/` 或 `postprocessor/` 子目录且包含 jar 时，通过 ServiceLoader 加载自定义实现
-3. **自动生成 pipeline**：根据 `model.yml` 的 inputs 定义自动生成 `parse_json` → `to_tensor` 的前处理 pipeline，输出直接透传
+3. **自动生成 pipeline**：根据 ONNX 模型元数据自动生成 `parse_json` → `to_tensor` 的前处理 pipeline，输出直接透传
 
 ### 三种扩展方式对比
 
@@ -247,22 +247,11 @@ stompClient.connect({}, () => {
 ```yaml
 name: sample-model
 version: "1.0"
-inputs:
-  - name: float_input
-    type: float32
-    shape: [-1, 4]
-outputs:
-  - name: variable
-    type: float32
-    shape: [-1, 1]
 preprocess:
   - op: parse_json
   - op: to_tensor
     params:
       field: float_input
-      name: float_input
-      type: float32
-      shape: [-1, 4]
 postprocess:
   - op: softmax
     params:
@@ -335,21 +324,11 @@ my-model/
 ```yaml
 name: my-model
 version: "1.0"
-inputs:
-  - name: input
-    type: float32
-    shape: [-1, 4]
-outputs:
-  - name: output
-    type: float32
 preprocess:
   - op: parse_json
   - op: to_tensor
     params:
       field: input
-      name: input
-      type: float32
-      shape: [-1, 4]
 ```
 
 部署：
@@ -422,17 +401,10 @@ com.example.myModel.operator.SigmoidOperator
 ```yaml
 name: my-model
 version: "1.0"
-inputs:
-  - name: input
-    type: float32
-    shape: [-1, 4]
-outputs:
-  - name: output
-    type: float32
 preprocess:
   - op: parse_json
   - op: to_tensor
-    params: { field: input, name: input, type: float32, shape: [-1, 4] }
+    params: { field: input }
 postprocess:
   - op: sigmoid
     params: { field: output }

@@ -72,7 +72,7 @@ model.yml 声明算子 > 自定义 JAR SPI > DefaultPreprocessor/DefaultPostproc
 | `extract_field` | 从嵌套路径提取字段或作为 DAG 分支拆分点    | `field`（支持点号路径如 `payload.features`）                                 |
 | `normalize`     | 数值归一化（z-score / min-max）  | `field`, `method: "standard"\|"minmax"`, `mean`/`std` 或 `min`/`max` |
 | `cast`          | 类型转换（double→float 等）      | `field`, `to: "float32"\|"int64"\|"int32"`                          |
-| `to_tensor`     | 将数值数据转为 OnnxTensor        | `field`, `name`（tensor 名）, `type`, `shape`                          |
+| `to_tensor`     | 将数值数据转为 OnnxTensor        | `field`（可选，单输入时省略；name/type/shape 自 ONNX 元数据推断）                                |
 
 **后处理算子：**
 
@@ -94,21 +94,13 @@ model.yml 声明算子 > 自定义 JAR SPI > DefaultPreprocessor/DefaultPostproc
 ```yaml
 name: iris-classifier
 version: "1.0"
-inputs:
-  - name: float_input
-    type: float32
-    shape: [1, 4]
-outputs:
-  - name: output
-    type: float32
-    shape: [1, 3]
 
 preprocess:
   - op: parse_json
   - op: normalize
     params: { field: float_input, method: minmax, min: [4.3, 2.0, 1.0, 0.1], max: [7.9, 4.4, 6.9, 2.5] }
   - op: to_tensor
-    params: { field: float_input, name: float_input, type: float32, shape: [1, 4] }
+    params: { field: float_input }
 
 postprocess:
   - op: argmax
@@ -125,16 +117,6 @@ postprocess:
 ```yaml
 name: multi-input-model
 version: "1.0"
-inputs:
-  - name: dense_features
-    type: float32
-    shape: [1, 10]
-  - name: sparse_features
-    type: int64
-    shape: [1, 5]
-outputs:
-  - name: prediction
-    type: float32
 
 preprocess:
   - id: parse
@@ -159,12 +141,12 @@ preprocess:
 
   - id: tensor_dense
     op: to_tensor
-    params: { name: dense_features, type: float32, shape: [1, 10] }
+    params: { field: dense_features }
     inputs: [norm_dense]
 
   - id: tensor_sparse
     op: to_tensor
-    params: { name: sparse_features, type: int64, shape: [1, 5] }
+    params: { field: sparse_features }
     inputs: [sparse]
 ```
 
