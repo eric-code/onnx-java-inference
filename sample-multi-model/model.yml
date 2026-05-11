@@ -1,25 +1,20 @@
 name: sample-multi-model
 version: "1.0"
-description: 多输入/多输出示例（占位配置，待 model.onnx 准备好后按实际 input/output 名调整）
-
-# ============================================================
-# 注意：以下 dense_features / sparse_features / score / label 均为占位名，
-# 请改成你拿到的 ONNX 模型实际的 input/output 名。
-# 启动时框架会从 model.onnx 读取真实名字，名字不一致 to_tensor 会抛 "字段 X 不存在"。
-# 详细原理见 docs/multi-input-output.md
-# ============================================================
+description: BiDAF 阅读理解模型（4 个 string 输入，2 个 int32 输出）
 
 preprocess:
   - step: parse_json
-  # 多输入：每个 ONNX input 对应一个 to_tensor 步骤，field 必填
   - step: to_tensor
-    params: { field: dense_features }
+    params: { field: context_word }
   - step: to_tensor
-    params: { field: sparse_features }
+    params: { field: context_char }
+  - step: to_tensor
+    params: { field: query_word }
+  - step: to_tensor
+    params: { field: query_char }
 
 postprocess:
-  # 多输出：每个 ONNX output 单独指定 field 和步骤，语义可不同
   - step: round
-    params: { field: score, decimals: 4 }
-  - step: argmax
-    params: { field: label, axis: 1 }
+    params: { field: start_pos, decimals: 0 }
+  - step: round
+    params: { field: end_pos, decimals: 0 }

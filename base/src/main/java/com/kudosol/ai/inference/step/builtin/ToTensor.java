@@ -64,6 +64,8 @@ public class ToTensor implements Step {
                         LongBuffer.wrap(ArrayUtils.flattenToLong(value)), shape);
                 case "int32" -> OnnxTensor.createTensor(env,
                         IntBuffer.wrap(ArrayUtils.flattenToInt(value)), shape);
+                case "string" -> OnnxTensor.createTensor(env,
+                        ArrayUtils.flattenToString(value), shape);
                 default -> throw new IllegalArgumentException("不支持的张量类型: " + type);
             };
         } catch (OrtException e) {
@@ -93,7 +95,7 @@ public class ToTensor implements Step {
             }
 
             if (dynamicCount == 1) {
-                long totalElements = ArrayUtils.flattenToDouble(value).length;
+                long totalElements = ArrayUtils.countElements(value);
                 shape[dynamicIndex] = totalElements / knownProduct;
             } else if (dynamicCount > 1) {
                 long[] inferred = ArrayUtils.inferShape(value);
