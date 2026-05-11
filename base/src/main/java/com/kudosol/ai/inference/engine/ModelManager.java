@@ -64,6 +64,18 @@ public class ModelManager implements ApplicationRunner {
         log.info("已加载 {} 个模型: {}", models.size(), models.keySet());
     }
 
+    private static Path findOnnxFile(Path dir) throws IOException {
+        try (var stream = Files.list(dir)) {
+            List<Path> onnxFiles = stream
+                    .filter(p -> p.toString().endsWith(".onnx"))
+                    .toList();
+            if (onnxFiles.size() > 1) {
+                throw new IllegalStateException("目录 " + dir.getFileName() + " 下有多个 .onnx 文件: " + onnxFiles);
+            }
+            return onnxFiles.isEmpty() ? null : onnxFiles.get(0);
+        }
+    }
+
     private void loadModel(Path dir) {
         String modelName = dir.getFileName().toString();
         try {
@@ -77,9 +89,9 @@ public class ModelManager implements ApplicationRunner {
                 meta = parseMeta(modelName, new Yaml().load(is));
             }
 
-            Path onnxFile = dir.resolve("model.onnx");
-            if (!Files.exists(onnxFile)) {
-                log.warn("模型 {} 缺少 model.onnx，跳过", modelName);
+            Path onnxFile = findOnnxFile(dir);
+            if (onnxFile == null) {
+                log.warn("模型 {} 缺少 .onnx 文件，跳过", modelName);
                 return;
             }
             OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
