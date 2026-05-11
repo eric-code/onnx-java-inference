@@ -1,8 +1,8 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.Step;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -25,7 +25,7 @@ import java.util.Map;
  *   - op: parse_json
  * </pre>
  */
-public class ParseJson implements Operator {
+public class ParseJson implements Step {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

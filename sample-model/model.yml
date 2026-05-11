@@ -1,10 +1,10 @@
 name: sample-model
 version: "1.0"
-description: XGBoost 示例模型（算子管线，零 Java 代码）
+description: XGBoost 示例模型（步骤管线，零 Java 代码）
 
 preprocess:
-  - op: parse_json
-  - op: to_tensor
+  - step: parse_json
+  - step: to_tensor
     params: { field: float_input }
 
 postprocess:

@@ -10,16 +10,16 @@ description: 多输入/多输出示例（占位配置，待 model.onnx 准备好
 # ============================================================
 
 preprocess:
-  - op: parse_json
+  - step: parse_json
   # 多输入：每个 ONNX input 对应一个 to_tensor 步骤，field 必填
-  - op: to_tensor
+  - step: to_tensor
     params: { field: dense_features }
-  - op: to_tensor
+  - step: to_tensor
     params: { field: sparse_features }
 
 postprocess:
-  # 多输出：每个 ONNX output 单独指定 field 和算子，语义可不同
-  - op: round
+  # 多输出：每个 ONNX output 单独指定 field 和步骤，语义可不同
+  - step: round
     params: { field: score, decimals: 4 }
-  - op: argmax
+  - step: argmax
     params: { field: label, axis: 1 }

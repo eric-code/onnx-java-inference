@@ -1,7 +1,7 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
 
 import java.util.Map;
 
@@ -25,7 +25,7 @@ import java.util.Map;
  *     params: { field: features, method: minmax, min: [0.0, 0.0], max: [1.0, 1.0] }
  * </pre>
  */
-public class Normalize implements Operator {
+public class Normalize implements Step {
 
     @Override
     public String name() {

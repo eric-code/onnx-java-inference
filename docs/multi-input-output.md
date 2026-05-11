@@ -2,7 +2,9 @@
 
 ## 背景
 
-算子（`to_tensor` / `sigmoid` / `argmax` …）在设计上**每次只处理一个 field**——读 context 里的某个字段，转换后写回 context。所以单输入/单输出场景下，框架可以无歧义地把 `field` 默认成那个唯一名字（参考 `OperatorContextSupport.resolveInputField` / `resolveOutputField`）。
+步骤（`to_tensor` / `sigmoid` / `argmax` …）在设计上**每次只处理一个 field**——读 context 里的某个字段，转换后写回
+context。所以单输入/单输出场景下，框架可以无歧义地把 `field` 默认成那个唯一名字（参考
+`OperatorContextSupport.resolveInputField` / `resolveOutputField`）。
 
 但只要候选名字 ≥2，框架就拒绝默认，必须显式写 `field`。本文档解释为什么这样设计，以及多输入/多输出的写法。
 
@@ -29,7 +31,9 @@
 }
 ```
 
-到了 `to_tensor`，如果不写 `field`，`OperatorContextSupport.resolveInputField` 看到 `meta.inputs.size() == 2`，无法判断这一步是要把 `age` 还是 `income` 转 tensor——挑错就会静默写错入参。所以抛 `"算子 to_tensor 未指定 field，且模型有 2 个输入 [age, income]，请显式声明 field 参数"`。
+到了 `to_tensor`，如果不写 `field`，`OperatorContextSupport.resolveInputField` 看到 `meta.inputs.size() == 2`，无法判断这一步是要把
+`age` 还是 `income` 转 tensor——挑错就会静默写错入参。所以抛
+`"步骤 to_tensor 未指定 field，且模型有 2 个输入 [age, income]，请显式声明 field 参数"`。
 
 根本原因：`ToTensor.execute` 设计上**一次只返回一个 entry**：
 ```java
@@ -60,10 +64,10 @@ version: "1.0"
 
 ```yaml
 preprocess:
-  - op: parse_json
-  - op: to_tensor
+  - step: parse_json
+  - step: to_tensor
     params: { field: age }
-  - op: to_tensor
+  - step: to_tensor
     params: { field: income }
 ```
 
@@ -93,12 +97,12 @@ for (Map.Entry<String, OnnxTensor> entry : output.entrySet()) {
 }
 ```
 
-后续每个算子按 `field` 各取所需：
+后续每个步骤按 `field` 各取所需：
 ```yaml
 postprocess:
-  - op: sigmoid
+  - step: sigmoid
     params: { field: score }
-  - op: argmax
+  - step: argmax
     params: { field: label, axis: 1 }
 ```
 
@@ -136,15 +140,16 @@ if (field != null) {
 改造后 yml 可以瘦到：
 ```yaml
 preprocess:
-  - op: parse_json
-  - op: to_tensor    # 自动转所有 input
+  - step: parse_json
+  - step: to_tensor    # 自动转所有 input
 ```
 
 同时 `buildAutoPreprocessSteps` 也可以化简成两步固定写死。
 
 ### 输出侧不应该这样做
 
-postprocess 算子语义**异质**——score 走 sigmoid、label 走 argmax 是常见配置。如果 `sigmoid` 缺省时遍历所有 output，会把 label 也 sigmoid 一遍，结果错。所以输出侧每个算子绑定一个具体 field 是对的，不能照搬。
+postprocess 步骤语义**异质**——score 走 sigmoid、label 走 argmax 是常见配置。如果 `sigmoid` 缺省时遍历所有 output，会把
+label 也 sigmoid 一遍，结果错。所以输出侧每个步骤绑定一个具体 field 是对的，不能照搬。
 
 ### 为什么暂不实施
 

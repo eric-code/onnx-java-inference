@@ -1,14 +1,14 @@
-package com.kudosol.ai.inference.sample.operator;
+package com.kudosol.ai.inference.sample.step;
 
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
-import com.kudosol.ai.inference.operator.OperatorContextSupport;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
+import com.kudosol.ai.inference.step.StepContextSupport;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Sigmoid 激活函数算子：对每个元素计算 1 / (1 + exp(-x))。
+ * Sigmoid 激活函数步骤：对每个元素计算 1 / (1 + exp(-x))。
  *
  * <p>参数：
  * <ul>
@@ -17,12 +17,12 @@ import java.util.Map;
  *
  * <p>YAML 声明：
  * <pre>
- *   - op: sigmoid                    # 单输出模型可省略 params
- *   - op: sigmoid
+ *   - step: sigmoid                    # 单输出模型可省略 params
+ *   - step: sigmoid
  *     params: { field: variable }    # 多输出时显式声明
  * </pre>
  */
-public class SigmoidOperator implements Operator {
+public class SigmoidStep implements Step {
 
     @Override
     public String name() {
@@ -31,7 +31,7 @@ public class SigmoidOperator implements Operator {
 
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
-        String field = OperatorContextSupport.resolveOutputField(input, params, "sigmoid");
+        String field = StepContextSupport.resolveOutputField(input, params, "sigmoid");
 
         Object value = input.get(field);
         if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");

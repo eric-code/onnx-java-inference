@@ -5,11 +5,11 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import com.kudosol.ai.inference.config.InferenceProperties;
-import com.kudosol.ai.inference.operator.Operator;
-import com.kudosol.ai.inference.operator.OperatorRegistry;
-import com.kudosol.ai.inference.operator.PipelinePostprocessor;
-import com.kudosol.ai.inference.operator.PipelinePreprocessor;
 import com.kudosol.ai.inference.spi.*;
+import com.kudosol.ai.inference.step.PipelinePostprocessor;
+import com.kudosol.ai.inference.step.PipelinePreprocessor;
+import com.kudosol.ai.inference.step.Step;
+import com.kudosol.ai.inference.step.StepRegistry;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,10 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Order(2)
 public class ModelManager implements ApplicationRunner {
 
-    private static final Set<String> RESERVED_DIRS = Set.of("preprocessor", "postprocessor", "operators");
+    private static final Set<String> RESERVED_DIRS = Set.of("preprocessor", "postprocessor", "steps");
 
     private final InferenceProperties properties;
-    private final OperatorRegistry operatorRegistry;
+    private final StepRegistry stepRegistry;
     private final OrtEnvironment env = OrtEnvironment.getEnvironment();
     private final Map<String, ModelContainer> models = new ConcurrentHashMap<>();
 
@@ -89,11 +89,11 @@ public class ModelManager implements ApplicationRunner {
 
             populateMetaFromOnnx(meta, session);
 
-            // Preprocessor: model.yml 算子管线 > SPI JAR > 自动生成管线
-            OperatorRegistry modelRegistry = resolveModelRegistry(dir, modelName);
+            // Preprocessor: model.yml 步骤管线 > SPI JAR > 自动生成管线
+            StepRegistry modelRegistry = resolveModelRegistry(dir, modelName);
             Preprocessor preprocessor = resolvePreprocessor(dir, meta, modelName, modelRegistry);
 
-            // Postprocessor: model.yml 算子管线 > SPI JAR > 自动生成管线
+            // Postprocessor: model.yml 步骤管线 > SPI JAR > 自动生成管线
             Postprocessor postprocessor = resolvePostprocessor(dir, meta, modelName, modelRegistry);
 
             preprocessor.init(meta);
@@ -113,19 +113,19 @@ public class ModelManager implements ApplicationRunner {
         }
     }
 
-    private OperatorRegistry resolveModelRegistry(Path dir, String modelName) {
-        List<Operator> customOps = ModelClassLoader.loadOperators(dir);
+    private StepRegistry resolveModelRegistry(Path dir, String modelName) {
+        List<Step> customOps = ModelClassLoader.loadSteps(dir);
         if (customOps.isEmpty()) {
-            return operatorRegistry;
+            return stepRegistry;
         }
-        log.info("模型 [{}] 加载 {} 个自定义算子", modelName, customOps.size());
-        return operatorRegistry.withOperators(customOps);
+        log.info("模型 [{}] 加载 {} 个自定义步骤", modelName, customOps.size());
+        return stepRegistry.withSteps(customOps);
     }
 
-    private Preprocessor resolvePreprocessor(Path dir, ModelMeta meta, String modelName, OperatorRegistry registry) {
-        // 1. model.yml 声明了算子管线
+    private Preprocessor resolvePreprocessor(Path dir, ModelMeta meta, String modelName, StepRegistry registry) {
+        // 1. model.yml 声明了步骤管线
         if (meta.getPreprocess() != null && !meta.getPreprocess().isEmpty()) {
-            log.info("模型 [{}] 使用算子管线前处理器 ({} 步)", modelName, meta.getPreprocess().size());
+            log.info("模型 [{}] 使用步骤管线前处理器 ({} 步)", modelName, meta.getPreprocess().size());
             return new PipelinePreprocessor(meta.getPreprocess(), registry);
         }
 
@@ -142,10 +142,10 @@ public class ModelManager implements ApplicationRunner {
         return new PipelinePreprocessor(autoSteps, registry);
     }
 
-    private Postprocessor resolvePostprocessor(Path dir, ModelMeta meta, String modelName, OperatorRegistry registry) {
-        // 1. model.yml 声明了算子管线
+    private Postprocessor resolvePostprocessor(Path dir, ModelMeta meta, String modelName, StepRegistry registry) {
+        // 1. model.yml 声明了步骤管线
         if (meta.getPostprocess() != null && !meta.getPostprocess().isEmpty()) {
-            log.info("模型 [{}] 使用算子管线后处理器 ({} 步)", modelName, meta.getPostprocess().size());
+            log.info("模型 [{}] 使用步骤管线后处理器 ({} 步)", modelName, meta.getPostprocess().size());
             return new PipelinePostprocessor(meta.getPostprocess(), registry);
         }
 
@@ -166,13 +166,13 @@ public class ModelManager implements ApplicationRunner {
 
         PipelineStep parseStep = new PipelineStep();
         parseStep.setId("auto_parse");
-        parseStep.setOp("parse_json");
+        parseStep.setStep("parse_json");
         steps.add(parseStep);
 
         for (TensorMeta tensorMeta : meta.getInputs()) {
             PipelineStep toTensorStep = new PipelineStep();
             toTensorStep.setId("auto_tensor_" + tensorMeta.getName());
-            toTensorStep.setOp("to_tensor");
+            toTensorStep.setStep("to_tensor");
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("field", tensorMeta.getName());
             toTensorStep.setParams(params);
@@ -239,11 +239,11 @@ public class ModelManager implements ApplicationRunner {
     private PipelineStep parsePipelineStep(String modelName, Map<String, Object> raw) {
         PipelineStep step = new PipelineStep();
         step.setId((String) raw.get("id"));
-        step.setOp((String) raw.get("op"));
+        step.setStep((String) raw.get("step"));
         step.setParams((Map<String, Object>) raw.get("params"));
         step.setInputs((List<String>) raw.get("inputs"));
 
-        if ("to_tensor".equals(step.getOp()) && step.getParams() != null) {
+        if ("to_tensor".equals(step.getStep()) && step.getParams() != null) {
             for (String forbidden : List.of("name", "type", "shape")) {
                 if (step.getParams().containsKey(forbidden)) {
                     log.warn("模型 [{}] model.yml 中 to_tensor.params.{} 已废弃，由 ONNX 元数据自动推断，建议删除",

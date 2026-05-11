@@ -1,7 +1,7 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,7 +24,7 @@ import java.util.Map;
  *     params: { field: logits, k: 3 }
  * </pre>
  */
-public class TopK implements Operator {
+public class TopK implements Step {
 
     @Override
     public String name() {

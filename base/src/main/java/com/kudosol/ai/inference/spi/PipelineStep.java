@@ -13,7 +13,7 @@ import java.util.Map;
 public class PipelineStep {
 
     private String id;
-    private String op;
+    private String step;
     private Map<String, Object> params;
     private List<String> inputs;
 }

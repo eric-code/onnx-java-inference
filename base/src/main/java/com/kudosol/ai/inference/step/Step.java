@@ -1,8 +1,8 @@
-package com.kudosol.ai.inference.operator;
+package com.kudosol.ai.inference.step;
 
 import java.util.Map;
 
-public interface Operator {
+public interface Step {
 
     String name();
 

@@ -1,4 +1,4 @@
-package com.kudosol.ai.inference.operator;
+package com.kudosol.ai.inference.step;
 
 import java.util.List;
 

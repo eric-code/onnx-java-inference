@@ -1,13 +1,13 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
-import com.kudosol.ai.inference.operator.OperatorContextSupport;
 import com.kudosol.ai.inference.spi.ModelMeta;
 import com.kudosol.ai.inference.spi.TensorMeta;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
+import com.kudosol.ai.inference.step.StepContextSupport;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -34,7 +34,7 @@ import java.util.Map;
  *     params: { field: float_input }    # 多输入或字段名与 ONNX input 名不同时显式声明
  * </pre>
  */
-public class ToTensor implements Operator {
+public class ToTensor implements Step {
 
     @Override
     public String name() {
@@ -43,13 +43,13 @@ public class ToTensor implements Operator {
 
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
-        String field = OperatorContextSupport.resolveInputField(input, params, "to_tensor");
+        String field = StepContextSupport.resolveInputField(input, params, "to_tensor");
 
         Object value = input.get(field);
         if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
 
-        ModelMeta meta = OperatorContextSupport.meta(input);
-        TensorMeta tensorMeta = OperatorContextSupport.findInput(meta, field);
+        ModelMeta meta = StepContextSupport.meta(input);
+        TensorMeta tensorMeta = StepContextSupport.findInput(meta, field);
         String type = tensorMeta.getType();
 
         long[] shape = parseShape(tensorMeta.getShape(), value);

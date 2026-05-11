@@ -1,4 +1,4 @@
-package com.kudosol.ai.inference.operator;
+package com.kudosol.ai.inference.step;
 
 import com.kudosol.ai.inference.spi.PipelineStep;
 
@@ -18,7 +18,7 @@ public class PipelineExecutor {
                 PipelineStep original = steps.get(i);
                 PipelineStep step = new PipelineStep();
                 step.setId("step_" + i);
-                step.setOp(original.getOp());
+                step.setStep(original.getStep());
                 step.setParams(original.getParams());
                 if (i > 0) {
                     step.setInputs(List.of("step_" + (i - 1)));
@@ -30,7 +30,7 @@ public class PipelineExecutor {
         return steps;
     }
 
-    public void validate(List<PipelineStep> steps, OperatorRegistry registry) {
+    public void validate(List<PipelineStep> steps, StepRegistry registry) {
         if (steps == null || steps.isEmpty()) return;
 
         Set<String> ids = new HashSet<>();
@@ -41,11 +41,11 @@ public class PipelineExecutor {
             if (!ids.add(step.getId())) {
                 throw new IllegalArgumentException("重复的步骤 id: " + step.getId());
             }
-            if (step.getOp() == null || step.getOp().isBlank()) {
-                throw new IllegalArgumentException("步骤 " + step.getId() + " 缺少 op");
+            if (step.getStep() == null || step.getStep().isBlank()) {
+                throw new IllegalArgumentException("步骤 " + step.getId() + " 缺少 step");
             }
-            if (!registry.contains(step.getOp())) {
-                throw new IllegalArgumentException("步骤 " + step.getId() + " 引用未知算子: " + step.getOp());
+            if (!registry.contains(step.getStep())) {
+                throw new IllegalArgumentException("步骤 " + step.getId() + " 引用未知步骤: " + step.getStep());
             }
             if (step.getInputs() != null) {
                 for (String inputId : step.getInputs()) {
@@ -115,7 +115,7 @@ public class PipelineExecutor {
         return layers;
     }
 
-    public void execute(List<PipelineStep> steps, Map<String, Object> context, OperatorRegistry registry) {
+    public void execute(List<PipelineStep> steps, Map<String, Object> context, StepRegistry registry) {
         if (steps.isEmpty()) return;
 
         List<PipelineStep> normalized = normalize(steps);
@@ -145,10 +145,10 @@ public class PipelineExecutor {
         }
     }
 
-    private Map<String, Object> runStep(PipelineStep step, Map<String, Object> context, OperatorRegistry registry) {
-        Operator operator = registry.get(step.getOp());
+    private Map<String, Object> runStep(PipelineStep step, Map<String, Object> context, StepRegistry registry) {
+        Step stepImpl = registry.get(step.getStep());
         Map<String, Object> params = step.getParams() != null ? step.getParams() : Map.of();
-        return operator.execute(context, params);
+        return stepImpl.execute(context, params);
     }
 
     private void mergeResult(Map<String, Object> context, Map<String, Object> result) {

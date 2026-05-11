@@ -1,6 +1,6 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.Step;
 
 import java.util.Map;
 
@@ -22,7 +22,7 @@ import java.util.Map;
  *     params: { field: payload.features }
  * </pre>
  */
-public class ExtractField implements Operator {
+public class ExtractField implements Step {
 
     @Override
     public String name() {

@@ -1,4 +1,4 @@
-package com.kudosol.ai.inference.operator;
+package com.kudosol.ai.inference.step;
 
 import ai.onnxruntime.OnnxTensor;
 import com.kudosol.ai.inference.spi.ModelMeta;
@@ -13,11 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PipelinePostprocessor implements Postprocessor {
 
     private final List<PipelineStep> steps;
-    private final OperatorRegistry registry;
+    private final StepRegistry registry;
     private final PipelineExecutor executor;
     private ModelMeta meta;
 
-    public PipelinePostprocessor(List<PipelineStep> steps, OperatorRegistry registry) {
+    public PipelinePostprocessor(List<PipelineStep> steps, StepRegistry registry) {
         this.steps = steps;
         this.registry = registry;
         this.executor = new PipelineExecutor();
@@ -38,11 +38,11 @@ public class PipelinePostprocessor implements Postprocessor {
         for (Map.Entry<String, OnnxTensor> entry : output.entrySet()) {
             context.put(entry.getKey(), entry.getValue().getValue());
         }
-        if (meta != null) context.put(OperatorContextSupport.META_KEY, meta);
+        if (meta != null) context.put(StepContextSupport.META_KEY, meta);
 
         executor.execute(steps, context, registry);
 
-        context.remove(OperatorContextSupport.META_KEY);
+        context.remove(StepContextSupport.META_KEY);
         return new LinkedHashMap<>(context);
     }
 }

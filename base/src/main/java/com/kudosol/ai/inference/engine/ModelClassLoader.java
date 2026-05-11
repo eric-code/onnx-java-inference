@@ -1,8 +1,8 @@
 package com.kudosol.ai.inference.engine;
 
-import com.kudosol.ai.inference.operator.Operator;
 import com.kudosol.ai.inference.spi.Postprocessor;
 import com.kudosol.ai.inference.spi.Preprocessor;
+import com.kudosol.ai.inference.step.Step;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,8 +26,8 @@ public class ModelClassLoader {
         return loadSpi(modelDir, "postprocessor", Postprocessor.class);
     }
 
-    public static List<Operator> loadOperators(Path modelDir) {
-        return loadAllSpi(modelDir, "operators", Operator.class);
+    public static List<Step> loadSteps(Path modelDir) {
+        return loadAllSpi(modelDir, "steps", Step.class);
     }
 
     private static <T> T loadSpi(Path modelDir, String subDir, Class<T> spiType) {

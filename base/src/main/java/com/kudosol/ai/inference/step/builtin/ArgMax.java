@@ -1,7 +1,7 @@
-package com.kudosol.ai.inference.operator.builtin;
+package com.kudosol.ai.inference.step.builtin;
 
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
 
 import java.util.Map;
 
@@ -20,7 +20,7 @@ import java.util.Map;
  *     params: { field: output }
  * </pre>
  */
-public class ArgMax implements Operator {
+public class ArgMax implements Step {
 
     @Override
     public String name() {

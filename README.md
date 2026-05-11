@@ -1,6 +1,6 @@
 # ONNX Java Inference
 
-基于 Spring Boot + ONNX Runtime Java 的 ONNX 模型推理服务，支持声明式算子编排前后处理、SPI 接口动态挂载自定义处理器、S3/HTTP
+基于 Spring Boot + ONNX Runtime Java 的 ONNX 模型推理服务，支持声明式步骤编排前后处理、SPI 接口动态挂载自定义处理器、S3/HTTP
 模型包动态加载，以及宿主机监听端口查询。
 
 ## 架构
@@ -15,7 +15,7 @@
         ├── Spring Boot HTTP 服务
         ├── 模型源下载器（S3 / HTTP）
         ├── 模型加载引擎
-        ├── 算子编排系统（声明式 DAG，11 个内置算子）
+        ├── 步骤编排系统（声明式 DAG，11 个内置步骤）
         ├── 前后处理 SPI（Preprocessor / Postprocessor 接口）
         ├── 推理日志 WebSocket 推送
         ├── 宿主机监听端口查询
@@ -56,17 +56,18 @@ ModelManager (@Order(2))
 
 模型加载时，前后处理器按以下优先级解析：
 
-1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 算子编排步骤，框架自动构建 PipelinePreprocessor / PipelinePostprocessor
+1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 步骤编排步骤，框架自动构建
+   PipelinePreprocessor / PipelinePostprocessor
 2. **SPI JAR**：模型目录下存在 `preprocessor/` 或 `postprocessor/` 子目录且包含 jar 时，通过 ServiceLoader 加载自定义实现
 3. **自动生成 pipeline**：根据 ONNX 模型元数据自动生成 `parse_json` → `to_tensor` 的前处理 pipeline，输出直接透传
 
 ### 三种扩展方式对比
 
-| 扩展方式             | 粒度   | 需要写 Java | 适用场景                                 |
-|------------------|------|---------|----------------------------------------|
-| model.yml 内置算子  | 单步骤  | 否       | 常见前后处理（JSON 解析、归一化、分类等）               |
-| model.yml + 自定义算子 | 单步骤  | 是       | 内置算子不满足需求（自定义激活函数、特殊数学变换等）           |
-| SPI JAR 前后处理器   | 整体替换 | 是       | 完全自定义前后处理逻辑（如图像 resize、文本 tokenize 等） |
+| 扩展方式              | 粒度   | 需要写 Java | 适用场景                                  |
+|-------------------|------|----------|---------------------------------------|
+| model.yml 内置步骤    | 单步骤  | 否        | 常见前后处理（JSON 解析、归一化、分类等）               |
+| model.yml + 自定义步骤 | 单步骤  | 是        | 内置步骤不满足需求（自定义激活函数、特殊数学变换等）            |
+| SPI JAR 前后处理器     | 整体替换 | 是        | 完全自定义前后处理逻辑（如图像 resize、文本 tokenize 等） |
 
 ### 多模型加载
 
@@ -80,7 +81,7 @@ ModelManager (@Order(2))
 ├── model-b/          # 自动加载
 │   ├── model.onnx
 │   ├── model.yml          # 含 preprocess/postprocess pipeline 定义
-│   ├── operators/         # 可选，自定义算子 JAR（仅对该模型可见）
+│   ├── steps/         # 可选，自定义步骤 JAR（仅对该模型可见）
 │   │   └── my-operator.jar
 │   ├── preprocessor/      # 可选，SPI JAR 优先于自动生成
 │   └── postprocessor/
@@ -131,13 +132,13 @@ onnx-java-inference/
 │       │   ├── InferenceLog.java            # 推理日志记录
 │       │   └── InferenceLogPublisher.java   # WebSocket 日志推送
 │       ├── operator/
-│       │   ├── Operator.java                # 算子接口
-│       │   ├── OperatorRegistry.java        # 算子注册中心
+│       │   ├── Step.java                # 步骤接口
+│       │   ├── StepRegistry.java        # 步骤注册中心
 │       │   ├── PipelineExecutor.java        # DAG 拓扑排序 & 并行执行
-│       │   ├── PipelinePreprocessor.java    # 算子编排前处理器
-│       │   ├── PipelinePostprocessor.java   # 算子编排后处理器
+│       │   ├── PipelinePreprocessor.java    # 步骤编排前处理器
+│       │   ├── PipelinePostprocessor.java   # 步骤编排后处理器
 │       │   ├── ArrayUtils.java              # 数组类型转换工具
-│       │   └── builtin/                     # 11 个内置算子
+│       │   └── builtin/                     # 11 个内置步骤
 │       │       ├── ParseJson.java           # parse_json
 │       │       ├── ExtractField.java        # extract_field
 │       │       ├── Normalize.java           # normalize
@@ -156,14 +157,14 @@ onnx-java-inference/
 │           ├── Postprocessor.java           # 后处理 SPI 接口
 │           ├── ModelMeta.java               # 模型元数据
 │           ├── TensorMeta.java              # 张量元数据
-│           └── PipelineStep.java            # 算子编排步骤定义
-└── sample-model/                            # 示例模型（含自定义算子）
+│           └── PipelineStep.java            # 步骤编排步骤定义
+└── sample-model/                            # 示例模型（含自定义步骤）
     ├── pom.xml
     ├── Dockerfile
     ├── model.yml
     ├── model.onnx
     └── src/main/java/.../sample/operator/
-        └── SigmoidOperator.java            # 自定义 sigmoid 算子示例
+        └── SigmoidStep.java            # 自定义 sigmoid 步骤示例
 ```
 
 ## API
@@ -332,14 +333,14 @@ stompClient.connect({}, () => {
 });
 ```
 
-## 算子编排系统
+## 步骤编排系统
 
-声明式 DAG 算子编排，在 `model.yml` 中定义前后处理步骤，无需编写 Java
+声明式 DAG 步骤编排，在 `model.yml` 中定义前后处理步骤，无需编写 Java
 代码。详见 [docs/operator-pipeline.md](docs/operator-pipeline.md)。
 
-### 内置算子
+### 内置步骤
 
-| 算子名             | 说明                                 |
+| 步骤名             | 说明                                 |
 |-----------------|------------------------------------|
 | `parse_json`    | 解析原始 `byte[]` 为 JSON，展开顶层 key 到上下文 |
 | `extract_field` | 按 dot-path 提取嵌套字段                  |
@@ -359,18 +360,18 @@ stompClient.connect({}, () => {
 name: sample-model
 version: "1.0"
 preprocess:
-  - op: parse_json
-  - op: to_tensor
+  - step: parse_json
+  - step: to_tensor
     params:
       field: float_input
 postprocess:
-  - op: softmax
+  - step: softmax
     params:
       field: variable
-  - op: argmax
+  - step: argmax
     params:
       field: variable
-  - op: label_map
+  - step: label_map
     params:
       field: variable
       labels: [cat, dog]
@@ -422,7 +423,7 @@ SPI 加载的 jar 与框架运行在同一个 JVM 中。安全边界建立在 Do
 
 ## 新增模型
 
-### 方式一：使用算子编排（推荐）
+### 方式一：使用步骤编排（推荐）
 
 在 `model.yml` 中声明前后处理步骤，无需编写 Java 代码：
 
@@ -436,8 +437,8 @@ my-model/
 name: my-model
 version: "1.0"
 preprocess:
-  - op: parse_json
-  - op: to_tensor
+  - step: parse_json
+  - step: to_tensor
     params:
       field: input
 ```
@@ -450,9 +451,10 @@ COPY model.onnx /models/my-model/model.onnx
 COPY model.yml /models/my-model/model.yml
 ```
 
-### 方式二：使用自定义算子
+### 方式二：使用自定义步骤
 
-当内置算子不满足需求时（如自定义激活函数、特殊数学变换），可实现 `Operator` 接口编写自定义算子，放到模型目录的 `operators/` 下。自定义算子只对声明它的模型可见，不影响其他模型。
+当内置步骤不满足需求时（如自定义激活函数、特殊数学变换），可实现 `Operator` 接口编写自定义步骤，放到模型目录的 `steps/`
+下。自定义步骤只对声明它的模型可见，不影响其他模型。
 
 #### 1. 创建 Maven 项目
 
@@ -467,17 +469,17 @@ COPY model.yml /models/my-model/model.yml
 
 #### 2. 实现 Operator 接口
 
-以 `sigmoid` 算子为例：
+以 `sigmoid` 步骤为例：
 
 ```java
-package com.example.myModel.operator;
+package com.example.myModel.step;
 
 import com.kudosol.ai.inference.operator.ArrayUtils;
 import com.kudosol.ai.inference.operator.Operator;
 import java.util.HashMap;
 import java.util.Map;
 
-public class SigmoidOperator implements Operator {
+public class SigmoidStep implements Step {
 
     @Override
     public String name() {
@@ -504,7 +506,7 @@ public class SigmoidOperator implements Operator {
 创建 `META-INF/services/com.kudosol.ai.inference.operator.Operator`：
 
 ```
-com.example.myModel.operator.SigmoidOperator
+com.example.myModel.step.SigmoidStep
 ```
 
 #### 4. 在 model.yml 中使用
@@ -513,18 +515,18 @@ com.example.myModel.operator.SigmoidOperator
 name: my-model
 version: "1.0"
 preprocess:
-  - op: parse_json
-  - op: to_tensor
+  - step: parse_json
+  - step: to_tensor
     params: { field: input }
 postprocess:
-  - op: sigmoid
+  - step: sigmoid
     params: { field: output }
 ```
 
 #### 5. 构建与部署
 
 ```bash
-# 编译自定义算子 jar
+# 编译自定义步骤 jar
 mvn clean package -DskipTests
 
 # 构建模型镜像
@@ -537,14 +539,14 @@ Dockerfile：
 FROM harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 COPY model.onnx /models/my-model/model.onnx
 COPY model.yml /models/my-model/model.yml
-COPY target/my-operator-*.jar /models/my-model/operators/
+COPY target/my-operator-*.jar /models/my-model/steps/
 ```
 
-自定义算子 jar 放到模型的 `operators/` 目录下，框架通过 ServiceLoader 自动发现。可放置多个 jar，每个 jar 可包含多个 Operator 实现。
+自定义步骤 jar 放到模型的 `steps/` 目录下，框架通过 ServiceLoader 自动发现。可放置多个 jar，每个 jar 可包含多个 Step 实现。
 
 #### 完整示例
 
-项目 `sample-model` 包含一个完整的自定义算子示例，参见 `sample-model/` 目录。
+项目 `sample-model` 包含一个完整的自定义步骤示例，参见 `sample-model/` 目录。
 
 ### 方式三：使用 SPI JAR 自定义前后处理器
 
@@ -660,7 +662,7 @@ my-model.tar.gz
 └── my-model/
     ├── model.onnx
     ├── model.yml
-    ├── operators/             ← 可选，自定义算子 JAR
+    ├── steps/             ← 可选，自定义步骤 JAR
     │   └── my-operator.jar
     ├── preprocessor/          ← 可选，SPI 前处理器 JAR
     │   └── preprocessor.jar
@@ -691,10 +693,10 @@ docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest .
 docker push harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 ```
 
-### 构建示例模型镜像（含自定义算子）
+### 构建示例模型镜像（含自定义步骤）
 
 ```bash
-# 1. 编译自定义算子 jar
+# 1. 编译自定义步骤 jar
 mvn clean package -pl sample-model -am -DskipTests
 
 # 2. 构建模型 Docker 镜像
@@ -750,7 +752,7 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 ## 注意事项
 
 - **请求 Content-Type**：推理接口 `/infer/{modelName}` 接收 `application/octet-stream`，请求体为原始字节，由 `parse_json`
-  算子或自定义 Preprocessor 解析
+  步骤或自定义 Preprocessor 解析
 - **输入类型校验**：应用启动时会打印每个模型的输入输出信息（名称、类型、形状），前后处理实现必须与模型定义匹配，否则运行时将报错
 - **张量类型**：ONNX 模型通常使用 `float32`，Java 端构建 `OnnxTensor` 时需用 `FloatBuffer` 而非 `DoubleBuffer`，类型不匹配会直接报错
 - **多维数组**：Java 端用一维数组 + `shape` 数组表示多维张量，例如 `[1, 3, 224, 224]` 对应长度为 `1*3*224*224` 的一维 float 数组

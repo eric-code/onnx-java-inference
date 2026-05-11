@@ -1,26 +1,26 @@
-# 算子编排系统设计
+# 步骤编排系统设计
 
 当前内置通用前后处理器（`DefaultPreprocessor` / `DefaultPostprocessor`）能覆盖"float/int 数组 → tensor"
 这类标准转换场景，但对于归一化、分类映射、标签解码等常见操作，仍需编写自定义 jar。
 
-计划设计一套**算子编排系统**作为通用处理器的升级替代：
+计划设计一套**步骤编排系统**作为通用处理器的升级替代：
 
-- **算子注册**：内置数值类算子，每个算子有明确的输入输出语义，与模型类型无关（传统ML / 神经网络 / Transformer / LLM 均适用）
-- **声明式编排**：在 model.yml 中声明前后处理流水线，用算子名 + 参数编排 DAG，无需编写 Java 代码
-- **可扩展**：支持通过 SPI 注册自定义算子，与内置算子混合编排
+- **步骤注册**：内置数值类步骤，每个步骤有明确的输入输出语义，与模型类型无关（传统ML / 神经网络 / Transformer / LLM 均适用）
+- **声明式编排**：在 model.yml 中声明前后处理流水线，用步骤名 + 参数编排 DAG，无需编写 Java 代码
+- **可扩展**：支持通过 SPI 注册自定义步骤，与内置步骤混合编排
 
 ## 核心设计
 
-### 算子接口
+### 步骤接口
 
 ```java
-public interface Operator {
+public interface Step {
     String name();
     Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params);
 }
 ```
 
-算子间通过 `Map<String, Object>` 传递数据（"黑板"模式），每个算子从上下文中读取所需字段、写入输出字段。
+步骤间通过 `Map<String, Object>` 传递数据（"黑板"模式），每个步骤从上下文中读取所需字段、写入输出字段。
 
 ### 数据流
 
@@ -53,30 +53,30 @@ public interface Operator {
 
 线性流水线是 DAG 的退化特例，统一处理：
 
-- 无 `id` 的算子 → 自动生成 `id`（`step_0`, `step_1`...），自动设置 `inputs` 指向前一步
-- 有 `id` 的算子 → DAG 模式，按 `inputs` 构建依赖图，拓扑排序后按层并行执行
+- 无 `id` 的步骤 → 自动生成 `id`（`step_0`, `step_1`...），自动设置 `inputs` 指向前一步
+- 有 `id` 的步骤 → DAG 模式，按 `inputs` 构建依赖图，拓扑排序后按层并行执行
 
 ### 优先级
 
-model.yml 声明算子 > 自定义 JAR SPI > DefaultPreprocessor/DefaultPostprocessor
+model.yml 声明步骤 > 自定义 JAR SPI > DefaultPreprocessor/DefaultPostprocessor
 
-## 第一阶段内置算子
+## 第一阶段内置步骤
 
-所有算子操作数值数组，与模型类型无关。
+所有步骤操作数值数组，与模型类型无关。
 
-**预处理算子：**
+**预处理步骤：**
 
-| 算子              | 说明                        | 参数                                                                  |
+| 步骤              | 说明                        | 参数                                                                  |
 |-----------------|---------------------------|---------------------------------------------------------------------|
 | `parse_json`    | 解析 raw bytes 为 JSON 结构化数据 | 无                                                                   |
 | `extract_field` | 从嵌套路径提取字段或作为 DAG 分支拆分点    | `field`（支持点号路径如 `payload.features`）                                 |
 | `normalize`     | 数值归一化（z-score / min-max）  | `field`, `method: "standard"\|"minmax"`, `mean`/`std` 或 `min`/`max` |
 | `cast`          | 类型转换（double→float 等）      | `field`, `to: "float32"\|"int64"\|"int32"`                          |
-| `to_tensor`     | 将数值数据转为 OnnxTensor        | `field`（可选，单输入时省略；name/type/shape 自 ONNX 元数据推断）                                |
+| `to_tensor`     | 将数值数据转为 OnnxTensor        | `field`（可选，单输入时省略；name/type/shape 自 ONNX 元数据推断）                     |
 
-**后处理算子：**
+**后处理步骤：**
 
-| 算子          | 说明           | 参数                               |
+| 步骤          | 说明           | 参数                               |
 |-------------|--------------|----------------------------------|
 | `argmax`    | 取最大值索引（分类）   | `field`, `axis`                  |
 | `softmax`   | Softmax 概率转换 | `field`, `axis`                  |
@@ -89,30 +89,30 @@ model.yml 声明算子 > 自定义 JAR SPI > DefaultPreprocessor/DefaultPostproc
 
 ## 线性流水线（简单场景）
 
-算子按声明顺序依次执行，前一个的输出是后一个的输入，适合单链路场景：
+步骤按声明顺序依次执行，前一个的输出是后一个的输入，适合单链路场景：
 
 ```yaml
 name: iris-classifier
 version: "1.0"
 
 preprocess:
-  - op: parse_json
-  - op: normalize
+  - step: parse_json
+  - step: normalize
     params: { field: float_input, method: minmax, min: [4.3, 2.0, 1.0, 0.1], max: [7.9, 4.4, 6.9, 2.5] }
-  - op: to_tensor
+  - step: to_tensor
     params: { field: float_input }
 
 postprocess:
-  - op: argmax
+  - step: argmax
     params: { field: output, axis: 1 }
-  - op: label_map
+  - step: label_map
     params: { field: output, labels: ["setosa", "versicolor", "virginica"] }
 ```
 
 ## DAG 编排（非线性场景）
 
-当流水线存在并行分支或多输入汇合时，线性列表无法表达。通过 `id` + `inputs` 声明算子间的依赖关系，框架据此构建 DAG
-并拓扑排序执行，无依赖关系的算子并行执行：
+当流水线存在并行分支或多输入汇合时，线性列表无法表达。通过 `id` + `inputs` 声明步骤间的依赖关系，框架据此构建 DAG
+并拓扑排序执行，无依赖关系的步骤并行执行：
 
 ```yaml
 name: multi-input-model
@@ -120,32 +120,32 @@ version: "1.0"
 
 preprocess:
   - id: parse
-    op: parse_json
+    step: parse_json
     # 展平写入上下文: {dense_features: [...], sparse_features: [...]}
     # 无 inputs，消费原始请求数据，是入口节点
 
   - id: dense
-    op: extract_field
+    step: extract_field
     params: { field: dense_features }
     inputs: [parse]                    # DAG 分支拆分点：声明 dense 分支起点
 
   - id: sparse
-    op: extract_field
+    step: extract_field
     params: { field: sparse_features }
     inputs: [parse]                    # DAG 分支拆分点：声明 sparse 分支起点
 
   - id: norm_dense
-    op: normalize
+    step: normalize
     params: { method: standard, mean: [...], std: [...] }
     inputs: [dense]
 
   - id: tensor_dense
-    op: to_tensor
+    step: to_tensor
     params: { field: dense_features }
     inputs: [norm_dense]
 
   - id: tensor_sparse
-    op: to_tensor
+    step: to_tensor
     params: { field: sparse_features }
     inputs: [sparse]
 ```
@@ -168,21 +168,21 @@ DAG 编排的关键字段：
 
 | 字段       | 说明                          |
 |----------|-----------------------------|
-| `id`     | 算子的唯一标识，用于被其他算子引用           |
-| `op`     | 算子类型名，对应已注册的算子实现            |
-| `params` | 算子参数，各算子自定义                 |
-| `inputs` | 依赖的上游算子 id 列表，省略则表示消费原始请求数据 |
+| `id`     | 步骤的唯一标识，用于被其他步骤引用           |
+| `op`     | 步骤类型名，对应已注册的步骤实现            |
+| `params` | 步骤参数，各步骤自定义                 |
+| `inputs` | 依赖的上游步骤 id 列表，省略则表示消费原始请求数据 |
 
 ## 代码结构
 
 ```
-base/src/main/java/com/kudosol/ai/inference/operator/
-├── Operator.java              # 算子接口
-├── OperatorRegistry.java      # 算子注册中心（@PostConstruct 自动注册内置算子 + SPI 加载自定义算子）
+base/src/main/java/com/kudosol/ai/inference/step/
+├── Step.java              # 步骤接口
+├── StepRegistry.java      # 步骤注册中心（@PostConstruct 自动注册内置步骤 + SPI 加载自定义步骤）
 ├── PipelineExecutor.java      # DAG/线性执行引擎（拓扑排序 + 按层并行）
 ├── PipelinePreprocessor.java  # 实现 Preprocessor，封装预处理管线
 ├── PipelinePostprocessor.java # 实现 Postprocessor，封装后处理管线
-└── builtin/                   # 内置算子实现
+└── builtin/                   # 内置步骤实现
     ├── ParseJson.java
     ├── ExtractField.java
     ├── Normalize.java
@@ -205,9 +205,9 @@ base/src/main/java/com/kudosol/ai/inference/operator/
 - `ModelMeta` 新增 `preprocess` / `postprocess` 字段
 - `InferenceEngine`、`ModelContainer`、`InferenceController` 无需修改
 
-算子编排系统上线后，自定义 jar 将降级为兜底方案——只有当算子库无法满足需求时才需要编写。
+步骤编排系统上线后，自定义 jar 将降级为兜底方案——只有当步骤库无法满足需求时才需要编写。
 
 ## 后续阶段
 
-- **第二阶段**：图像类算子（`decode_image`、`resize`、`transpose`）
-- **第三阶段**：文本类算子（`bert_tokenize`、`pad_sequence`）
+- **第二阶段**：图像类步骤（`decode_image`、`resize`、`transpose`）
+- **第三阶段**：文本类步骤（`bert_tokenize`、`pad_sequence`）
