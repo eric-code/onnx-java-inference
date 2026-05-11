@@ -168,13 +168,15 @@ onnx-java-inference/
 
 ## API
 
-| 方法   | 路径                   | 说明                                              |
-|------|----------------------|-------------------------------------------------|
-| POST | `/infer/{modelName}` | 执行推理，请求体为 `application/octet-stream`，返回 JSON 结果 |
-| GET  | `/models`            | 列出所有已加载模型                                       |
-| GET  | `/models/{name}`     | 查看模型详情（输入输出定义）                                  |
-| GET  | `/host/ports`        | 查询宿主机监听端口列表（需挂载 `/proc`）                        |
-| GET  | `/actuator/health`   | 健康检查                                            |
+| 方法   | 路径                           | 说明                                              |
+|------|------------------------------|-------------------------------------------------|
+| POST | `/infer/{modelName}`         | 执行推理，请求体为 `application/octet-stream`，返回 JSON 结果 |
+| GET  | `/models`                    | 列出所有已加载模型                                       |
+| GET  | `/models/{name}`             | 查看模型详情（输入输出定义）                                  |
+| GET  | `/host/ports`                | 查询宿主机监听端口列表（需挂载 `/proc`）                        |
+| GET  | `/actuator/health`           | 汇总健康状态（包含所有组件）                                  |
+| GET  | `/actuator/health/liveness`  | 进程存活状态（K8s livenessProbe）                       |
+| GET  | `/actuator/health/readiness` | 服务就绪状态（含模型加载检查，K8s readinessProbe）              |
 
 ### 推理请求示例
 
@@ -197,6 +199,115 @@ curl http://localhost:8080/models/sample-model
 
 # 查询宿主机监听端口
 curl http://localhost:8080/host/ports
+```
+
+### 健康检查
+
+框架通过 Spring Boot Actuator 暴露三个健康检查端点。
+
+#### 汇总状态
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+返回示例（模型已加载）：
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "ping": {"status": "UP"},
+    "diskSpace": {"status": "UP"},
+    "model": {
+      "status": "UP",
+      "details": {
+        "ready": true,
+        "modelCount": 2,
+        "models": ["sample-model", "load-predict"]
+      }
+    }
+  }
+}
+```
+
+#### 存活检查（K8s livenessProbe）
+
+```bash
+curl http://localhost:8080/actuator/health/liveness
+```
+
+返回示例：
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "livenessState": {"status": "UP"}
+  }
+}
+```
+
+#### 就绪检查（K8s readinessProbe）
+
+```bash
+curl http://localhost:8080/actuator/health/readiness
+```
+
+返回示例（模型已加载）：
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "readinessState": {"status": "UP"},
+    "model": {
+      "status": "UP",
+      "details": {
+        "ready": true,
+        "modelCount": 2,
+        "models": ["sample-model", "load-predict"]
+      }
+    }
+  }
+}
+```
+
+返回示例（无模型）：
+
+```json
+{
+  "status": "DOWN",
+  "components": {
+    "readinessState": {"status": "UP"},
+    "model": {
+      "status": "DOWN",
+      "details": {
+        "ready": false,
+        "modelCount": 0,
+        "models": []
+      }
+    }
+  }
+}
+```
+
+K8s 配置示例：
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
 ```
 
 ### 推理日志 WebSocket 推送
