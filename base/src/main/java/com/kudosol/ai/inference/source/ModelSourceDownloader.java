@@ -12,6 +12,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.yaml.snakeyaml.Yaml;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -24,12 +25,17 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -38,6 +44,8 @@ import java.util.zip.ZipInputStream;
 @RequiredArgsConstructor
 @Order(1)
 public class ModelSourceDownloader implements ApplicationRunner {
+
+    private static final String STAGING_PREFIX = ".staging-";
 
     private final InferenceProperties inferenceProperties;
     private final S3Properties s3Properties;
@@ -55,6 +63,8 @@ public class ModelSourceDownloader implements ApplicationRunner {
         } catch (IOException e) {
             throw new IllegalStateException("创建模型目录失败: " + e.getMessage(), e);
         }
+
+        cleanupStagingResidue(modelDir);
 
         boolean hasS3Source = inferenceProperties.getModelSources().stream()
                 .anyMatch(s -> s.startsWith("s3://"));
@@ -80,12 +90,12 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private void downloadAndExtract(String source, Path modelDir, S3Client s3Client) {
-        String modelName = deriveModelName(source);
         log.info("下载模型包: {}", source);
 
         Path tempFile = null;
+        Path staging = null;
         try {
-            tempFile = Files.createTempFile("model-download-", getTempSuffix(source));
+            tempFile = Files.createTempFile("model-download-", ".pkg");
 
             if (source.startsWith("s3://")) {
                 downloadFromS3(s3Client, source, tempFile);
@@ -95,7 +105,23 @@ public class ModelSourceDownloader implements ApplicationRunner {
                 throw new IllegalArgumentException("不支持的模型来源格式: " + source);
             }
 
-            extract(tempFile, modelDir, modelName);
+            staging = Files.createTempDirectory(modelDir, STAGING_PREFIX);
+            extract(tempFile, staging);
+
+            Path metaFile = findModelMeta(staging);
+            if (metaFile == null) {
+                throw new IllegalStateException("归档中未找到 model.yml");
+            }
+            String modelName = readModelName(metaFile);
+            if (!StringUtils.hasText(modelName)) {
+                throw new IllegalStateException("model.yml 中 name 字段缺失或为空");
+            }
+
+            Path target = modelDir.resolve(modelName);
+            if (Files.exists(target)) {
+                deleteRecursively(target);
+            }
+            Files.move(metaFile.getParent(), target, StandardCopyOption.ATOMIC_MOVE);
             log.info("模型包 [{}] 下载并解压完成", modelName);
         } catch (S3Exception e) {
             throw new IllegalStateException("从 S3 下载失败 %s: %s".formatted(source, e.getMessage()), e);
@@ -105,6 +131,12 @@ public class ModelSourceDownloader implements ApplicationRunner {
             if (tempFile != null) {
                 try {
                     Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
+            }
+            if (staging != null && Files.exists(staging)) {
+                try {
+                    deleteRecursively(staging);
                 } catch (IOException ignored) {
                 }
             }
@@ -138,21 +170,29 @@ public class ModelSourceDownloader implements ApplicationRunner {
         Files.write(target, response.body());
     }
 
-    private void extract(Path archiveFile, Path modelDir, String modelName) throws IOException {
-        String fileName = archiveFile.getFileName().toString().toLowerCase();
-        if (fileName.endsWith(".zip")) {
-            extractZip(archiveFile, modelDir, modelName);
-        } else if (fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz")) {
-            extractTarGz(archiveFile, modelDir, modelName);
-        } else {
-            throw new IllegalArgumentException("不支持的压缩格式: " + fileName + "，支持 .tar.gz/.tgz/.zip");
+    private void extract(Path archiveFile, Path targetDir) throws IOException {
+        ArchiveType type = sniffArchiveType(archiveFile);
+        if (type == null) {
+            throw new IllegalArgumentException("不支持的压缩格式（按文件头识别），仅支持 .zip / .tar.gz / .tgz");
+        }
+        switch (type) {
+            case ZIP -> extractZip(archiveFile, targetDir);
+            case TAR_GZ -> extractTarGz(archiveFile, targetDir);
         }
     }
 
-    private void extractTarGz(Path tarGzFile, Path modelDir, String modelName) throws IOException {
-        Path targetDir = modelDir.resolve(modelName);
-        prepareTargetDir(targetDir);
+    private ArchiveType sniffArchiveType(Path file) throws IOException {
+        byte[] header = new byte[4];
+        try (InputStream in = Files.newInputStream(file)) {
+            int n = in.read(header);
+            if (n < 2) return null;
+        }
+        if (header[0] == 'P' && header[1] == 'K') return ArchiveType.ZIP;
+        if ((header[0] & 0xFF) == 0x1F && (header[1] & 0xFF) == 0x8B) return ArchiveType.TAR_GZ;
+        return null;
+    }
 
+    private void extractTarGz(Path tarGzFile, Path targetDir) throws IOException {
         try (TarArchiveInputStream tarStream = new TarArchiveInputStream(
                 new GzipCompressorInputStream(Files.newInputStream(tarGzFile)))) {
 
@@ -162,37 +202,31 @@ public class ModelSourceDownloader implements ApplicationRunner {
                     log.warn("无法读取 tar 条目: {}", entry.getName());
                     continue;
                 }
-                copyEntry(entry.getName(), tarStream, targetDir, modelDir, modelName);
+                writeEntry(targetDir, entry.getName(), entry.isDirectory(), tarStream);
             }
         }
     }
 
-    private void extractZip(Path zipFile, Path modelDir, String modelName) throws IOException {
-        Path targetDir = modelDir.resolve(modelName);
-        prepareTargetDir(targetDir);
-
+    private void extractZip(Path zipFile, Path targetDir) throws IOException {
         try (ZipInputStream zipStream = new ZipInputStream(Files.newInputStream(zipFile))) {
             ZipEntry entry;
             while ((entry = zipStream.getNextEntry()) != null) {
-                copyEntry(entry.getName(), zipStream, targetDir, modelDir, modelName);
+                writeEntry(targetDir, entry.getName(), entry.isDirectory(), zipStream);
             }
         }
     }
 
-    private void copyEntry(String entryName, java.io.InputStream stream, Path targetDir, Path modelDir, String modelName) throws IOException {
+    private void writeEntry(Path targetDir, String entryName, boolean isDirectory, InputStream stream) throws IOException {
         if (entryName.contains("..") || entryName.startsWith("/")) {
             throw new IOException("不安全的条目路径: " + entryName);
         }
 
-        String relativePath = stripTopLevelDir(entryName, modelName);
-        if (relativePath == null || relativePath.isEmpty()) return;
-
-        Path entryTarget = targetDir.resolve(relativePath).normalize();
+        Path entryTarget = targetDir.resolve(entryName).normalize();
         if (!entryTarget.startsWith(targetDir)) {
             throw new IOException("条目路径逃逸: " + entryName);
         }
 
-        if (entryName.endsWith("/")) {
+        if (isDirectory) {
             Files.createDirectories(entryTarget);
         } else {
             Files.createDirectories(entryTarget.getParent());
@@ -200,23 +234,44 @@ public class ModelSourceDownloader implements ApplicationRunner {
         }
     }
 
-    private void prepareTargetDir(Path targetDir) throws IOException {
-        if (Files.exists(targetDir)) {
-            deleteRecursively(targetDir);
+    private Path findModelMeta(Path staging) throws IOException {
+        try (var stream = Files.walk(staging)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> "model.yml".equals(p.getFileName().toString()))
+                    .findFirst()
+                    .orElse(null);
         }
-        Files.createDirectories(targetDir);
     }
 
-    private String stripTopLevelDir(String entryName, String modelName) {
-        if (entryName.startsWith(modelName + "/")) {
-            return entryName.substring(modelName.length() + 1);
+    @SuppressWarnings("unchecked")
+    private String readModelName(Path metaFile) throws IOException {
+        try (InputStream in = Files.newInputStream(metaFile)) {
+            Object raw = new Yaml().load(in);
+            if (!(raw instanceof Map)) return null;
+            Object name = ((Map<String, Object>) raw).get("name");
+            return name != null ? name.toString() : null;
         }
-        return entryName;
+    }
+
+    private void cleanupStagingResidue(Path modelDir) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(modelDir, STAGING_PREFIX + "*")) {
+            for (Path residue : stream) {
+                try {
+                    deleteRecursively(residue);
+                    log.info("清理上次残留的临时解压目录: {}", residue.getFileName());
+                } catch (IOException e) {
+                    log.warn("清理临时解压目录失败: {} — {}", residue.getFileName(), e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            log.warn("扫描临时解压残留失败: {}", e.getMessage());
+        }
     }
 
     private void deleteRecursively(Path dir) throws IOException {
         try (var stream = Files.walk(dir)) {
-            stream.sorted(java.util.Comparator.reverseOrder())
+            stream.sorted(Comparator.reverseOrder())
                     .forEach(p -> {
                         try {
                             Files.delete(p);
@@ -225,26 +280,6 @@ public class ModelSourceDownloader implements ApplicationRunner {
                         }
                     });
         }
-    }
-
-    private String deriveModelName(String source) {
-        String fileName = stripQueryString(source.substring(source.lastIndexOf('/') + 1));
-        if (fileName.endsWith(".tar.gz")) return fileName.substring(0, fileName.length() - 7);
-        if (fileName.endsWith(".tgz")) return fileName.substring(0, fileName.length() - 4);
-        if (fileName.endsWith(".zip")) return fileName.substring(0, fileName.length() - 4);
-        return fileName;
-    }
-
-    private String getTempSuffix(String source) {
-        String lower = stripQueryString(source).toLowerCase();
-        if (lower.endsWith(".zip")) return ".zip";
-        if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return ".tar.gz";
-        return ".pkg";
-    }
-
-    private String stripQueryString(String s) {
-        int idx = s.indexOf('?');
-        return idx >= 0 ? s.substring(0, idx) : s;
     }
 
     private S3Client buildS3Client() {
@@ -261,5 +296,9 @@ public class ModelSourceDownloader implements ApplicationRunner {
         }
 
         return builder.build();
+    }
+
+    private enum ArchiveType {
+        ZIP, TAR_GZ
     }
 }
