@@ -8,5 +8,3 @@ preprocess:
     params: { field: float_input }
 
 postprocess:
-  - op: sigmoid
-    params: { field: variable }
