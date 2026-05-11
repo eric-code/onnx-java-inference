@@ -6,5 +6,3 @@ preprocess:
   - step: parse_json
   - step: to_tensor
     params: { field: float_input }
-
-postprocess:
