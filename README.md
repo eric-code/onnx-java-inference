@@ -82,7 +82,7 @@ ModelManager (@Order(2))
 │   ├── model.onnx
 │   ├── model.yml          # 含 preprocess/postprocess pipeline 定义
 │   ├── steps/         # 可选，自定义步骤 JAR（仅对该模型可见）
-│   │   └── my-operator.jar
+│   │   └── custom-step.jar
 │   ├── preprocessor/      # 可选，SPI JAR 优先于自动生成
 │   └── postprocessor/
 └── model-c/          # 自动加载
@@ -131,9 +131,10 @@ onnx-java-inference/
 │       ├── log/
 │       │   ├── InferenceLog.java            # 推理日志记录
 │       │   └── InferenceLogPublisher.java   # WebSocket 日志推送
-│       ├── operator/
-│       │   ├── Step.java                # 步骤接口
-│       │   ├── StepRegistry.java        # 步骤注册中心
+│       ├── step/
+│       │   ├── Step.java                    # 步骤接口
+│       │   ├── StepRegistry.java            # 步骤注册中心
+│       │   ├── StepContextSupport.java      # 字段解析工具
 │       │   ├── PipelineExecutor.java        # DAG 拓扑排序 & 并行执行
 │       │   ├── PipelinePreprocessor.java    # 步骤编排前处理器
 │       │   ├── PipelinePostprocessor.java   # 步骤编排后处理器
@@ -158,13 +159,22 @@ onnx-java-inference/
 │           ├── ModelMeta.java               # 模型元数据
 │           ├── TensorMeta.java              # 张量元数据
 │           └── PipelineStep.java            # 步骤编排步骤定义
-└── sample-model/                            # 示例模型（含自定义步骤）
-    ├── pom.xml
-    ├── Dockerfile
-    ├── model.yml
-    ├── model.onnx
-    └── src/main/java/.../sample/operator/
-        └── SigmoidStep.java            # 自定义 sigmoid 步骤示例
+└── examples/                                # 示例
+    ├── sample-model/                        # 零 Java 代码示例（纯 YAML 步骤编排）
+    │   ├── model.onnx
+    │   └── model.yml
+    ├── sample-multi-model/                  # 多输入/输出示例
+    │   ├── bidaf-9.onnx
+    │   └── model.yml
+    ├── custom-step/                         # 自定义步骤 JAR 项目（独立 Maven 项目）
+    │   ├── pom.xml
+    │   └── src/main/java/.../sample/step/
+    │       ├── LogTransformStep.java        # 自定义前处理步骤
+    │       └── SigmoidStep.java            # 自定义后处理步骤
+    └── sample-custom-step/                  # 使用自定义步骤的模型部署示例
+        ├── model.onnx
+        ├── model.yml
+        └── Dockerfile
 ```
 
 ## API
@@ -453,29 +463,44 @@ COPY model.yml /models/my-model/model.yml
 
 ### 方式二：使用自定义步骤
 
-当内置步骤不满足需求时（如自定义激活函数、特殊数学变换），可实现 `Operator` 接口编写自定义步骤，放到模型目录的 `steps/`
+当内置步骤不满足需求时（如自定义激活函数、特殊数学变换），可实现 `Step` 接口编写自定义步骤，放到模型目录的 `steps/`
 下。自定义步骤只对声明它的模型可见，不影响其他模型。
 
 #### 1. 创建 Maven 项目
 
+创建独立的 `pom.xml`，依赖 `onnx-java-inference-base`（`provided` scope），不需要 onnx-java-inference 源码：
+
 ```xml
-<dependency>
-    <groupId>com.kudosol.ai</groupId>
-    <artifactId>onnx-java-inference-base</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-    <scope>provided</scope>
-</dependency>
+<groupId>com.example</groupId>
+<artifactId>my-custom-step</artifactId>
+<version>1.0.0</version>
+
+<properties>
+    <java.version>21</java.version>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>com.kudosol.ai</groupId>
+        <artifactId>onnx-java-inference-base</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
 ```
 
-#### 2. 实现 Operator 接口
+#### 2. 实现 Step 接口
 
 以 `sigmoid` 步骤为例：
 
 ```java
 package com.example.myModel.step;
 
-import com.kudosol.ai.inference.operator.ArrayUtils;
-import com.kudosol.ai.inference.operator.Operator;
+import com.kudosol.ai.inference.step.ArrayUtils;
+import com.kudosol.ai.inference.step.Step;
+import com.kudosol.ai.inference.step.StepContextSupport;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -488,22 +513,26 @@ public class SigmoidStep implements Step {
 
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
-        String field = (String) params.get("field");
+        String field = StepContextSupport.resolveOutputField(input, params, name());
+
         Object value = input.get(field);
+        if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
 
         double[] data = ArrayUtils.flattenToDouble(value);
         for (int i = 0; i < data.length; i++) {
             data[i] = 1.0 / (1.0 + Math.exp(-data[i]));
         }
 
-        return Map.of(field, data);
+        Map<String, Object> result = new HashMap<>();
+        result.put(field, data);
+        return result;
     }
 }
 ```
 
 #### 3. 配置 ServiceLoader
 
-创建 `META-INF/services/com.kudosol.ai.inference.operator.Operator`：
+创建 `META-INF/services/com.kudosol.ai.inference.step.Step`：
 
 ```
 com.example.myModel.step.SigmoidStep
@@ -525,12 +554,15 @@ postprocess:
 
 #### 5. 构建与部署
 
-```bash
-# 编译自定义步骤 jar
-mvn clean package -DskipTests
+步骤 JAR 的构建和模型部署是独立的两步：
 
-# 构建模型镜像
-docker build -t my-model:latest .
+```bash
+# 1. 编译自定义步骤 jar
+cd my-custom-step && mvn clean package -DskipTests && cd ..
+
+# 2. 将 JAR 复制到模型部署目录，构建模型镜像
+cp my-custom-step/target/my-custom-step-*.jar my-model/
+docker build -t my-model:latest ./my-model
 ```
 
 Dockerfile：
@@ -539,14 +571,16 @@ Dockerfile：
 FROM harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 COPY model.onnx /models/my-model/model.onnx
 COPY model.yml /models/my-model/model.yml
-COPY target/my-operator-*.jar /models/my-model/steps/
+COPY my-custom-step-*.jar /models/my-model/steps/
 ```
 
 自定义步骤 jar 放到模型的 `steps/` 目录下，框架通过 ServiceLoader 自动发现。可放置多个 jar，每个 jar 可包含多个 Step 实现。
 
 #### 完整示例
 
-项目 `sample-model` 包含一个完整的自定义步骤示例，参见 `sample-model/` 目录。
+- **步骤 JAR 项目**：`examples/custom-step/` — 独立 Maven 项目，产出步骤
+  JAR，详见 [examples/custom-step/README.md](examples/custom-step/README.md)
+- **模型部署示例**：`examples/sample-custom-step/` — 拿到 JAR 后构建部署镜像的完整示例
 
 ### 方式三：使用 SPI JAR 自定义前后处理器
 
@@ -663,7 +697,7 @@ my-model.tar.gz
     ├── model.onnx
     ├── model.yml
     ├── steps/             ← 可选，自定义步骤 JAR
-    │   └── my-operator.jar
+    │   └── custom-step.jar
     ├── preprocessor/          ← 可选，SPI 前处理器 JAR
     │   └── preprocessor.jar
     └── postprocessor/         ← 可选，SPI 后处理器 JAR
@@ -693,17 +727,20 @@ docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest .
 docker push harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 ```
 
-### 构建示例模型镜像（含自定义步骤）
+### 构建自定义步骤示例镜像
 
 ```bash
 # 1. 编译自定义步骤 jar
-mvn clean package -pl sample-model -am -DskipTests
+cd examples/custom-step && mvn clean package -DskipTests && cd ../..
 
-# 2. 构建模型 Docker 镜像
-docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-sample:latest ./sample-model
+# 2. 将 JAR 复制到模型部署目录
+cp examples/custom-step/target/custom-step-*.jar examples/sample-custom-step/
 
-# 3. 推送到 Harbor
-docker push harbor.tianyishuju.com/skyease/onnx-java-inference-sample:latest
+# 3. 构建模型 Docker 镜像
+docker build -t harbor.tianyishuju.com/skyease/onnx-java-inference-sample-custom-step:latest ./examples/sample-custom-step
+
+# 4. 推送到 Harbor
+docker push harbor.tianyishuju.com/skyease/onnx-java-inference-sample-custom-step:latest
 ```
 
 ### 运行

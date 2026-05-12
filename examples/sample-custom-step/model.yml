@@ -1,0 +1,13 @@
+name: sample-custom-step
+version: "1.0"
+description: XGBoost 示例模型（含自定义前后处理步骤）
+
+preprocess:
+  - step: parse_json
+  - step: log_transform
+  - step: to_tensor
+    params: { field: float_input }
+
+postprocess:
+  - step: sigmoid
+    params: { field: variable }
