@@ -229,11 +229,81 @@ COPY custom-step-*.jar /models/<模型名>/steps/
 
 ### 6. 测试推理
 
+启动服务后，通过推理接口验证自定义步骤是否正常工作。该模型的管线为：
+`parse_json → log_transform → to_tensor → 推理 → sigmoid`。
+
+#### 验证模型加载
+
 ```bash
-# 对输入做 log_transform → to_tensor → 推理 → sigmoid
+# 查看已加载模型
+curl http://localhost:8080/models
+# [{"name":"sample-custom-step","version":"1.0"}, ...]
+
+# 查看模型详情（确认输入输出定义）
+curl http://localhost:8080/models/sample-custom-step
+# {"name":"sample-custom-step","version":"1.0","inputs":["float_input"],"outputs":["variable"]}
+```
+
+#### 单条推理
+
+```bash
 curl -X POST http://localhost:8080/infer/sample-custom-step \
   -H "Content-Type: application/octet-stream" \
-  -d '{"float_input": [1.0, 2.0, 3.0, 4.0]}'
+  -d '{"float_input": [[1.0, 2.0, 3.0, 4.0]]}'
+```
+
+返回：
+
+```json
+{"variable":[1.0]}
+```
+
+XGBoost 模型对 `log(1+x)` 变换后的输入产生较大原始输出，sigmoid 将其映射到 `[0, 1]` 区间。输出 `1.0` 表示模型对该输入有极高置信度。
+
+#### 批量推理
+
+```bash
+curl -X POST http://localhost:8080/infer/sample-custom-step \
+  -H "Content-Type: application/octet-stream" \
+  -d '{"float_input": [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]}'
+```
+
+返回：
+
+```json
+{"variable":[1.0, 1.0]}
+```
+
+#### 对比：无自定义步骤的原始输出
+
+同一样本用 `sample-model`（无 log_transform、无 sigmoid）推理，对比查看自定义步骤的效果：
+
+```bash
+curl -X POST http://localhost:8080/infer/sample-model \
+  -H "Content-Type: application/octet-stream" \
+  -d '{"float_input": [[1.0, 2.0, 3.0, 4.0]]}'
+```
+
+返回：
+
+```json
+{"variable":[[368.75665]]}
+```
+
+对比可见：sigmoid 将原始输出 `368.75665` 正确映射到了 `1.0`。
+
+#### 错误场景
+
+```bash
+# 模型不存在
+curl -X POST http://localhost:8080/infer/nonexistent \
+  -d '{"float_input": [[1.0]]}'
+# → {"error":"模型不存在: nonexistent"} (HTTP 400)
+
+# 缺少输入字段
+curl -X POST http://localhost:8080/infer/sample-custom-step \
+  -d '{"wrong_field": [[1.0, 2.0, 3.0, 4.0]]}'
+# → {"error":"模型 [sample-custom-step] 前处理失败: 字段 float_input 不存在"} (HTTP 500)
 ```
 
 ## 加载机制说明

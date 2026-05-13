@@ -54,20 +54,31 @@ ModelManager (@Order(2))
 
 ### 前后处理器解析优先级
 
-模型加载时，前后处理器按以下优先级解析：
+模型加载时，**前处理和后处理分别独立解析**，各自按以下优先级选取（互斥，不会合并）：
 
-1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 步骤编排步骤，框架自动构建
-   PipelinePreprocessor / PipelinePostprocessor
+1. **model.yml pipeline**：在 `model.yml` 中声明 `preprocess` / `postprocess` 步骤管线，框架自动构建
+   PipelinePreprocessor / PipelinePostprocessor。管线中可以自由混用内置步骤和自定义步骤
 2. **SPI JAR**：模型目录下存在 `preprocessor/` 或 `postprocessor/` 子目录且包含 jar 时，通过 ServiceLoader 加载自定义实现
-3. **自动生成 pipeline**：根据 ONNX 模型元数据自动生成 `parse_json` → `to_tensor` 的前处理 pipeline，输出直接透传
+3. **自动生成 pipeline**：前处理根据 ONNX 模型元数据自动生成 `parse_json` → `to_tensor` 管线；后处理使用空管线（直接返回
+   `tensor.getValue()`）
+
+**关于共存**：如果模型目录同时存在 `model.yml` 声明了 pipeline、`preprocessor/` 或 `postprocessor/` 下的 SPI JAR、以及
+`steps/` 下的自定义步骤 JAR，行为如下：
+
+- `steps/` 下的自定义步骤**总是被加载**到 StepRegistry，只要 `model.yml` 管线中引用了就能使用
+- `preprocessor/` 或 `postprocessor/` 下的 SPI JAR **被忽略**，因为 model.yml 声明了 pipeline 就走管线，不会降级到 SPI
+- 因此应避免同时放置 SPI JAR 和 model.yml pipeline 声明，以免造成困惑
 
 ### 三种扩展方式对比
 
-| 扩展方式              | 粒度   | 需要写 Java | 适用场景                                  |
-|-------------------|------|----------|---------------------------------------|
-| model.yml 内置步骤    | 单步骤  | 否        | 常见前后处理（JSON 解析、归一化、分类等）               |
-| model.yml + 自定义步骤 | 单步骤  | 是        | 内置步骤不满足需求（自定义激活函数、特殊数学变换等）            |
-| SPI JAR 前后处理器     | 整体替换 | 是        | 完全自定义前后处理逻辑（如图像 resize、文本 tokenize 等） |
+| 扩展方式              | 粒度   | 需要写 Java | 适用场景                                  | 能否与内置步骤混用 |
+|-------------------|------|----------|---------------------------------------|-----------|
+| model.yml 内置步骤    | 单步骤  | 否        | 常见前后处理（JSON 解析、归一化、分类等）               | —         |
+| model.yml + 自定义步骤 | 单步骤  | 是        | 内置步骤不满足需求（自定义激活函数、特殊数学变换等）            | 可以        |
+| SPI JAR 前后处理器     | 整体替换 | 是        | 完全自定义前后处理逻辑（如图像 resize、文本 tokenize 等） | 不可以       |
+
+**自定义步骤 vs SPI 前后处理器**：两者解决不同层面的问题。自定义步骤操作黑板上下文中的 Java 对象（数值数组），适合逐步骤组合；SPI
+前后处理器直接构造/读取 `OnnxTensor`，适合需要特殊数据格式（`BufferedImage`、token 序列等）的整体处理场景，难以拆分为独立步骤。
 
 ### 多模型加载
 
@@ -201,6 +212,12 @@ curl -X POST http://localhost:8080/infer/sample-model \
 curl -X POST http://localhost:8080/infer/sample-model \
   -H "Content-Type: application/octet-stream" \
   -d '{"float_input": [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]}'
+
+# 使用自定义步骤的模型推理（管线: parse_json → log_transform → to_tensor → 推理 → sigmoid）
+curl -X POST http://localhost:8080/infer/sample-custom-step \
+  -H "Content-Type: application/octet-stream" \
+  -d '{"float_input": [[1.0, 2.0, 3.0, 4.0]]}'
+# → {"variable":[1.0]}    (sigmoid 将原始输出 368.75665 映射到 [0,1] 区间)
 
 # 列出已加载模型
 curl http://localhost:8080/models

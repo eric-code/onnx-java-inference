@@ -283,6 +283,7 @@ public final class ArrayUtils {
         if (value instanceof float[] arr) return arr.length;
         if (value instanceof int[] arr) return arr.length;
         if (value instanceof long[] arr) return arr.length;
+        if (value instanceof Number) return 1;
         if (value instanceof String s) return 1;
         throw new IllegalArgumentException("无法计算元素数: " + value.getClass().getName());
     }
