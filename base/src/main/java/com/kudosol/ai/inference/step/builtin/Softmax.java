@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step.builtin;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 
@@ -30,10 +31,10 @@ public class Softmax implements Step {
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
         String field = (String) params.get("field");
-        if (field == null) throw new IllegalArgumentException("softmax 缺少 field 参数");
+        if (field == null) throw new BadRequestException("softmax 缺少 field 参数");
 
         Object value = input.get(field);
-        if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
+        if (value == null) throw new BadRequestException("字段 " + field + " 不存在");
 
         long[] shape = ArrayUtils.inferShape(value);
         double[] data = ArrayUtils.flattenToDouble(value);

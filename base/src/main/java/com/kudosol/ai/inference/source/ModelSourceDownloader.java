@@ -2,6 +2,8 @@ package com.kudosol.ai.inference.source;
 
 import com.kudosol.ai.inference.config.InferenceProperties;
 import com.kudosol.ai.inference.config.S3Properties;
+import com.kudosol.ai.inference.exception.BadRequestException;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -34,6 +36,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -49,6 +52,15 @@ public class ModelSourceDownloader implements ApplicationRunner {
 
     private final InferenceProperties inferenceProperties;
     private final S3Properties s3Properties;
+
+    private HttpClient httpClient;
+
+    @PostConstruct
+    void init() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(inferenceProperties.getDownloadTimeout())
+                .build();
+    }
 
     @Override
     public void run(ApplicationArguments args) {
@@ -71,7 +83,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
         S3Client s3Client = null;
         if (hasS3Source) {
             if (!s3Properties.isEnabled()) {
-                throw new IllegalStateException("model-sources 包含 s3:// 但 inference.s3.enabled=false");
+                throw new BadRequestException("model-sources 包含 s3:// 但 inference.s3.enabled=false");
             }
             s3Client = buildS3Client();
         }
@@ -79,13 +91,40 @@ public class ModelSourceDownloader implements ApplicationRunner {
         try {
             for (String source : inferenceProperties.getModelSources()) {
                 try {
-                    downloadAndExtract(source, modelDir, s3Client);
+                    downloadWithRetry(source, modelDir, s3Client);
                 } catch (Exception e) {
-                    log.warn("模型下载失败，跳过: {} — {}", source, e.getMessage());
+                    log.error("模型下载最终失败，跳过: {} — {}", source, e.getMessage());
                 }
             }
         } finally {
             if (s3Client != null) s3Client.close();
+        }
+    }
+
+    private void downloadWithRetry(String source, Path modelDir, S3Client s3Client) {
+        int maxAttempts = inferenceProperties.getDownloadRetryCount() + 1;
+        Duration baseDelay = inferenceProperties.getDownloadRetryDelay();
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                downloadAndExtract(source, modelDir, s3Client);
+                return;
+            } catch (Exception e) {
+                if (attempt == maxAttempts) {
+                    throw new IllegalStateException(
+                            "模型下载失败 (已重试 %d 次): %s — %s".formatted(
+                                    inferenceProperties.getDownloadRetryCount(), source, e.getMessage()), e);
+                }
+                long delayMs = baseDelay.toMillis() * (1L << (attempt - 1));
+                log.warn("模型下载失败 (尝试 {}/{}): {} — {}，{}ms 后重试",
+                        attempt, maxAttempts, source, e.getMessage(), delayMs);
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("模型下载被中断: " + source, ie);
+                }
+            }
         }
     }
 
@@ -102,7 +141,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
             } else if (source.startsWith("http://") || source.startsWith("https://")) {
                 downloadFromHttp(source, tempFile);
             } else {
-                throw new IllegalArgumentException("不支持的模型来源格式: " + source);
+                throw new BadRequestException("不支持的模型来源格式: " + source);
             }
 
             staging = Files.createTempDirectory(modelDir, STAGING_PREFIX);
@@ -110,11 +149,11 @@ public class ModelSourceDownloader implements ApplicationRunner {
 
             Path metaFile = findModelMeta(staging);
             if (metaFile == null) {
-                throw new IllegalStateException("归档中未找到 model.yml");
+                throw new BadRequestException("归档中未找到 model.yml");
             }
             String modelName = readModelName(metaFile);
             if (!StringUtils.hasText(modelName)) {
-                throw new IllegalStateException("model.yml 中 name 字段缺失或为空");
+                throw new BadRequestException("model.yml 中 name 字段缺失或为空");
             }
 
             Path target = modelDir.resolve(modelName);
@@ -157,23 +196,23 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private void downloadFromHttp(String url, Path target) throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+                .timeout(inferenceProperties.getDownloadTimeout())
                 .GET()
                 .build();
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<Path> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofFile(target));
         if (response.statusCode() != 200) {
-            String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
-            throw new IOException("HTTP 下载失败，状态码: " + response.statusCode() + "，响应: " + body);
+            Files.deleteIfExists(target);
+            throw new IOException("HTTP 下载失败，状态码: " + response.statusCode());
         }
-        Files.write(target, response.body());
     }
 
     private void extract(Path archiveFile, Path targetDir) throws IOException {
         ArchiveType type = sniffArchiveType(archiveFile);
         if (type == null) {
-            throw new IllegalArgumentException("不支持的压缩格式（按文件头识别），仅支持 .zip / .tar.gz / .tgz");
+            throw new BadRequestException("不支持的压缩格式（按文件头识别），仅支持 .zip / .tar.gz / .tgz");
         }
         switch (type) {
             case ZIP -> extractZip(archiveFile, targetDir);
@@ -284,6 +323,9 @@ public class ModelSourceDownloader implements ApplicationRunner {
 
     private S3Client buildS3Client() {
         S3ClientBuilder builder = S3Client.builder()
+                .overrideConfiguration(cfg -> cfg
+                        .apiCallTimeout(inferenceProperties.getDownloadTimeout())
+                        .apiCallAttemptTimeout(inferenceProperties.getDownloadTimeout()))
                 .region(Region.of(s3Properties.getRegion()))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(

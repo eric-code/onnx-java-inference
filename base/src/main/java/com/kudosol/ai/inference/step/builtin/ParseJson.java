@@ -2,6 +2,7 @@ package com.kudosol.ai.inference.step.builtin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.Step;
 
 import java.io.IOException;
@@ -38,12 +39,12 @@ public class ParseJson implements Step {
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
         byte[] raw = (byte[]) input.get("_raw");
         if (raw == null) {
-            throw new IllegalStateException("上下文中缺少 _raw 数据");
+            throw new BadRequestException("上下文中缺少 _raw 数据");
         }
         try {
             JsonNode root = MAPPER.readTree(raw);
             if (!root.isObject()) {
-                throw new IllegalArgumentException("请求体必须是 JSON 对象");
+                throw new BadRequestException("请求体必须是 JSON 对象");
             }
             Map<String, Object> result = new HashMap<>();
             Iterator<Map.Entry<String, JsonNode>> fields = root.fields();

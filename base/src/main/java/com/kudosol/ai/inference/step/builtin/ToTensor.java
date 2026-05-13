@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import com.kudosol.ai.inference.spi.ModelMeta;
 import com.kudosol.ai.inference.spi.TensorMeta;
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 import com.kudosol.ai.inference.step.StepContextSupport;
@@ -46,7 +47,7 @@ public class ToTensor implements Step {
         String field = StepContextSupport.resolveInputField(input, params, "to_tensor");
 
         Object value = input.get(field);
-        if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
+        if (value == null) throw new BadRequestException("字段 " + field + " 不存在");
 
         ModelMeta meta = StepContextSupport.meta(input);
         TensorMeta tensorMeta = StepContextSupport.findInput(meta, field);
@@ -66,7 +67,7 @@ public class ToTensor implements Step {
                         IntBuffer.wrap(ArrayUtils.flattenToInt(value)), shape);
                 case "string" -> OnnxTensor.createTensor(env,
                         ArrayUtils.flattenToString(value), shape);
-                default -> throw new IllegalArgumentException("不支持的张量类型: " + type);
+                default -> throw new BadRequestException("不支持的张量类型: " + type);
             };
         } catch (OrtException e) {
             throw new RuntimeException("创建张量失败: " + e.getMessage(), e);

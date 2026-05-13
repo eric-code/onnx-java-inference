@@ -1,6 +1,7 @@
 package com.kudosol.ai.inference.step;
 
 import ai.onnxruntime.OnnxTensor;
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.spi.ModelMeta;
 import com.kudosol.ai.inference.spi.PipelineStep;
 import com.kudosol.ai.inference.spi.Preprocessor;
@@ -55,7 +56,7 @@ public class PipelinePreprocessor implements Preprocessor {
         }
 
         if (result.isEmpty()) {
-            throw new IllegalStateException("管线执行后上下文中无 OnnxTensor，请检查 to_tensor 步骤");
+            throw new BadRequestException("管线执行后上下文中无 OnnxTensor，请检查 to_tensor 步骤");
         }
 
         return result;

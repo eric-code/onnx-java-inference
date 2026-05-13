@@ -5,16 +5,17 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import com.kudosol.ai.inference.config.InferenceProperties;
+import com.kudosol.ai.inference.exception.NotFoundException;
 import com.kudosol.ai.inference.spi.*;
 import com.kudosol.ai.inference.step.PipelinePostprocessor;
 import com.kudosol.ai.inference.step.PipelinePreprocessor;
 import com.kudosol.ai.inference.step.Step;
 import com.kudosol.ai.inference.step.StepRegistry;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
@@ -23,12 +24,12 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @Order(2)
 public class ModelManager implements ApplicationRunner {
 
@@ -36,8 +37,16 @@ public class ModelManager implements ApplicationRunner {
 
     private final InferenceProperties properties;
     private final StepRegistry stepRegistry;
+    private final InferenceEngine inferenceEngine;
     private final OrtEnvironment env = OrtEnvironment.getEnvironment();
     private final Map<String, ModelContainer> models = new ConcurrentHashMap<>();
+
+    public ModelManager(InferenceProperties properties, StepRegistry stepRegistry,
+                        @Lazy InferenceEngine inferenceEngine) {
+        this.properties = properties;
+        this.stepRegistry = stepRegistry;
+        this.inferenceEngine = inferenceEngine;
+    }
 
     @Override
     public void run(ApplicationArguments args) {
@@ -118,7 +127,7 @@ public class ModelManager implements ApplicationRunner {
             session.getOutputInfo().forEach((name, info) ->
                     log.info("  输出 [{}]: {}", name, info.getInfo()));
 
-            models.put(modelName, new ModelContainer(modelName, meta.getVersion(), session, preprocessor, postprocessor));
+            models.put(modelName, new ModelContainer(modelName, meta.getVersion(), meta.getTimeout(), session, preprocessor, postprocessor));
             log.info("模型 [{}] v{} 加载成功", modelName, meta.getVersion());
         } catch (Exception e) {
             throw new IllegalStateException("加载模型 [%s] 失败: %s".formatted(modelName, e.getMessage()), e);
@@ -230,6 +239,11 @@ public class ModelManager implements ApplicationRunner {
         meta.setVersion((String) raw.getOrDefault("version", "unknown"));
         meta.setDescription((String) raw.getOrDefault("description", ""));
 
+        Object timeoutValue = raw.get("timeout");
+        if (timeoutValue != null) {
+            meta.setTimeout(parseDuration(timeoutValue));
+        }
+
         List<Map<String, Object>> rawPreprocess = (List<Map<String, Object>>) raw.get("preprocess");
         if (rawPreprocess != null && !rawPreprocess.isEmpty()) {
             meta.setPreprocess(rawPreprocess.stream()
@@ -270,10 +284,20 @@ public class ModelManager implements ApplicationRunner {
         return RESERVED_DIRS.contains(dir.getFileName().toString());
     }
 
+    private Duration parseDuration(Object value) {
+        String text = value.toString().trim();
+        try {
+            return Duration.parse(text.startsWith("PT") ? text : "PT" + text);
+        } catch (Exception e) {
+            log.warn("无法解析超时配置 '{}', 忽略", text);
+            return null;
+        }
+    }
+
     public ModelContainer getModel(String name) {
         ModelContainer container = models.get(name);
         if (container == null) {
-            throw new IllegalArgumentException("模型不存在: " + name);
+            throw new NotFoundException("模型不存在: " + name);
         }
         return container;
     }
@@ -284,6 +308,11 @@ public class ModelManager implements ApplicationRunner {
 
     @PreDestroy
     public void destroy() {
+        log.info("优雅停机: 等待推理请求完成...");
+        boolean drained = inferenceEngine.awaitInFlight(10_000);
+        if (!drained) {
+            log.warn("优雅停机: 等待超时，仍有 {} 个推理请求未完成，强制关闭", inferenceEngine.getInFlightCount());
+        }
         models.values().forEach(ModelContainer::close);
         env.close();
     }

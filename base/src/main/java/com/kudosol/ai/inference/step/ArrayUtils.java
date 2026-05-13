@@ -1,5 +1,7 @@
 package com.kudosol.ai.inference.step;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
+
 import java.util.List;
 
 public final class ArrayUtils {
@@ -29,7 +31,7 @@ public final class ArrayUtils {
             for (int i = 0; i < list.size(); i++) result[i] = ((Number) list.get(i)).doubleValue();
             return result;
         }
-        throw new IllegalArgumentException("无法转换为 double[]: " + value.getClass().getName());
+        throw new BadRequestException("无法转换为 double[]: " + value.getClass().getName());
     }
 
     public static float[] toFloatArray(Object value) {
@@ -54,7 +56,7 @@ public final class ArrayUtils {
             for (int i = 0; i < list.size(); i++) result[i] = ((Number) list.get(i)).floatValue();
             return result;
         }
-        throw new IllegalArgumentException("无法转换为 float[]: " + value.getClass().getName());
+        throw new BadRequestException("无法转换为 float[]: " + value.getClass().getName());
     }
 
     public static long[] toLongArray(Object value) {
@@ -79,7 +81,7 @@ public final class ArrayUtils {
             for (int i = 0; i < list.size(); i++) result[i] = ((Number) list.get(i)).longValue();
             return result;
         }
-        throw new IllegalArgumentException("无法转换为 long[]: " + value.getClass().getName());
+        throw new BadRequestException("无法转换为 long[]: " + value.getClass().getName());
     }
 
     public static int[] toIntArray(Object value) {
@@ -104,7 +106,7 @@ public final class ArrayUtils {
             for (int i = 0; i < list.size(); i++) result[i] = ((Number) list.get(i)).intValue();
             return result;
         }
-        throw new IllegalArgumentException("无法转换为 int[]: " + value.getClass().getName());
+        throw new BadRequestException("无法转换为 int[]: " + value.getClass().getName());
     }
 
     public static double[] flattenToDouble(Object value) {
@@ -152,7 +154,7 @@ public final class ArrayUtils {
                 result[i] = ((Number) list.get(i)).doubleValue();
             return result;
         }
-        throw new IllegalArgumentException("无法展平为 double[]: " + value.getClass().getName());
+        throw new BadRequestException("无法展平为 double[]: " + value.getClass().getName());
     }
 
     public static float[] flattenToFloat(Object value) {
@@ -235,7 +237,7 @@ public final class ArrayUtils {
             }
             return new long[]{list.size()};
         }
-        throw new IllegalArgumentException("无法推断 shape: " + value.getClass().getName());
+        throw new BadRequestException("无法推断 shape: " + value.getClass().getName());
     }
 
     public static String[] flattenToString(Object value) {
@@ -256,7 +258,7 @@ public final class ArrayUtils {
             fillStrings(value, result, new int[]{0});
             return result;
         }
-        throw new IllegalArgumentException("无法展平为 String[]: " + value.getClass().getName());
+        throw new BadRequestException("无法展平为 String[]: " + value.getClass().getName());
     }
 
     private static void fillStrings(Object value, String[] out, int[] offset) {
@@ -268,7 +270,7 @@ public final class ArrayUtils {
         } else if (value instanceof String s) {
             out[offset[0]++] = s;
         } else {
-            throw new IllegalArgumentException("字符串展平遇到非字符串元素: " + value);
+            throw new BadRequestException("字符串展平遇到非字符串元素: " + value);
         }
     }
 
@@ -285,6 +287,6 @@ public final class ArrayUtils {
         if (value instanceof long[] arr) return arr.length;
         if (value instanceof Number) return 1;
         if (value instanceof String s) return 1;
-        throw new IllegalArgumentException("无法计算元素数: " + value.getClass().getName());
+        throw new BadRequestException("无法计算元素数: " + value.getClass().getName());
     }
 }

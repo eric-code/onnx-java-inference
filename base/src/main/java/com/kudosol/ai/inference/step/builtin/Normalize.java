@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step.builtin;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 
@@ -36,11 +37,11 @@ public class Normalize implements Step {
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
         String field = (String) params.get("field");
         if (field == null) {
-            throw new IllegalArgumentException("normalize 缺少 field 参数");
+            throw new BadRequestException("normalize 缺少 field 参数");
         }
         Object value = input.get(field);
         if (value == null) {
-            throw new IllegalArgumentException("字段 " + field + " 不存在");
+            throw new BadRequestException("字段 " + field + " 不存在");
         }
 
         String method = (String) params.getOrDefault("method", "standard");
@@ -63,7 +64,7 @@ public class Normalize implements Step {
                     data[i] = (data[i] - min[i % featureDim]) / (max[i % featureDim] - min[i % featureDim]);
                 }
             }
-            default -> throw new IllegalArgumentException("不支持的归一化方法: " + method);
+            default -> throw new BadRequestException("不支持的归一化方法: " + method);
         }
 
         return Map.of(field, data);

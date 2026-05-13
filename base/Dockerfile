@@ -25,7 +25,7 @@ RUN ONNX_JAR=$(find BOOT-INF/lib -name 'onnxruntime-*.jar' | head -1) \
     && unzip -jo "$ONNX_JAR" 'ai/onnxruntime/native/linux-x64/*' -d /app/native/ \
     && rm -f /app/native/*.dSYM /app/native/*.dll /app/native/*.dylib 2>/dev/null || true
 
-ENV JAVA_OPTS="-Djava.library.path=/app/native"
+ENV JAVA_OPTS="-Djava.library.path=/app/native -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
 EXPOSE 8080
 

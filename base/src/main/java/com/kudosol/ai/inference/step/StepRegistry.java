@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.builtin.*;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +48,7 @@ public class StepRegistry {
 
     public Step get(String name) {
         Step op = steps.get(name);
-        if (op == null) throw new IllegalArgumentException("未知步骤: " + name);
+        if (op == null) throw new BadRequestException("未知步骤: " + name);
         return op;
     }
 

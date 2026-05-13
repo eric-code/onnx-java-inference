@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.spi.ModelMeta;
 import com.kudosol.ai.inference.spi.TensorMeta;
 
@@ -27,7 +28,7 @@ public final class StepContextSupport {
         ModelMeta m = meta(ctx);
         List<TensorMeta> inputs = m.getInputs();
         if (inputs.size() == 1) return inputs.get(0).getName();
-        throw new IllegalArgumentException("步骤 " + stepName + " 未指定 field，且模型有 "
+        throw new BadRequestException("步骤 " + stepName + " 未指定 field，且模型有 "
                 + inputs.size() + " 个输入 " + names(inputs) + "，请显式声明 field 参数");
     }
 
@@ -37,7 +38,7 @@ public final class StepContextSupport {
         ModelMeta m = meta(ctx);
         List<TensorMeta> outputs = m.getOutputs();
         if (outputs.size() == 1) return outputs.get(0).getName();
-        throw new IllegalArgumentException("步骤 " + stepName + " 未指定 field，且模型有 "
+        throw new BadRequestException("步骤 " + stepName + " 未指定 field，且模型有 "
                 + outputs.size() + " 个输出 " + names(outputs) + "，请显式声明 field 参数");
     }
 
@@ -45,7 +46,7 @@ public final class StepContextSupport {
         for (TensorMeta tm : meta.getInputs()) {
             if (tm.getName().equals(name)) return tm;
         }
-        throw new IllegalArgumentException("to_tensor field='" + name
+        throw new BadRequestException("to_tensor field='" + name
                 + "' 在 ONNX 输入中不存在，已知输入: " + names(meta.getInputs()));
     }
 

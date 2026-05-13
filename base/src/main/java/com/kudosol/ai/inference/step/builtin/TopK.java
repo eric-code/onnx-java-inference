@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step.builtin;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 
@@ -34,14 +35,14 @@ public class TopK implements Step {
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
         String field = (String) params.get("field");
-        if (field == null) throw new IllegalArgumentException("top_k 缺少 field 参数");
+        if (field == null) throw new BadRequestException("top_k 缺少 field 参数");
 
         Object kObj = params.get("k");
-        if (kObj == null) throw new IllegalArgumentException("top_k 缺少 k 参数");
+        if (kObj == null) throw new BadRequestException("top_k 缺少 k 参数");
         int k = ((Number) kObj).intValue();
 
         Object value = input.get(field);
-        if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
+        if (value == null) throw new BadRequestException("字段 " + field + " 不存在");
 
         double[] data = ArrayUtils.flattenToDouble(value);
         long[] shape = ArrayUtils.inferShape(value);

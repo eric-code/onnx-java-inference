@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step.builtin;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 
@@ -32,12 +33,12 @@ public class Round implements Step {
     @Override
     public Map<String, Object> execute(Map<String, Object> input, Map<String, Object> params) {
         String field = (String) params.get("field");
-        if (field == null) throw new IllegalArgumentException("round 缺少 field 参数");
+        if (field == null) throw new BadRequestException("round 缺少 field 参数");
 
         int decimals = params.containsKey("decimals") ? ((Number) params.get("decimals")).intValue() : 0;
 
         Object value = input.get(field);
-        if (value == null) throw new IllegalArgumentException("字段 " + field + " 不存在");
+        if (value == null) throw new BadRequestException("字段 " + field + " 不存在");
 
         double[] data = ArrayUtils.flattenToDouble(value);
         double factor = Math.pow(10, decimals);

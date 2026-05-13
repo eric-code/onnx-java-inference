@@ -1,5 +1,6 @@
 package com.kudosol.ai.inference.step;
 
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.spi.PipelineStep;
 
 import java.util.*;
@@ -36,21 +37,21 @@ public class PipelineExecutor {
         Set<String> ids = new HashSet<>();
         for (PipelineStep step : steps) {
             if (step.getId() == null || step.getId().isBlank()) {
-                throw new IllegalArgumentException("DAG 模式下所有步骤必须有 id");
+                throw new BadRequestException("DAG 模式下所有步骤必须有 id");
             }
             if (!ids.add(step.getId())) {
-                throw new IllegalArgumentException("重复的步骤 id: " + step.getId());
+                throw new BadRequestException("重复的步骤 id: " + step.getId());
             }
             if (step.getStep() == null || step.getStep().isBlank()) {
-                throw new IllegalArgumentException("步骤 " + step.getId() + " 缺少 step");
+                throw new BadRequestException("步骤 " + step.getId() + " 缺少 step");
             }
             if (!registry.contains(step.getStep())) {
-                throw new IllegalArgumentException("步骤 " + step.getId() + " 引用未知步骤: " + step.getStep());
+                throw new BadRequestException("步骤 " + step.getId() + " 引用未知步骤: " + step.getStep());
             }
             if (step.getInputs() != null) {
                 for (String inputId : step.getInputs()) {
                     if (inputId.equals(step.getId())) {
-                        throw new IllegalArgumentException("步骤 " + step.getId() + " 不能引用自身");
+                        throw new BadRequestException("步骤 " + step.getId() + " 不能引用自身");
                     }
                 }
             }
@@ -61,7 +62,7 @@ public class PipelineExecutor {
             if (step.getInputs() != null) {
                 for (String inputId : step.getInputs()) {
                     if (!idSet.contains(inputId)) {
-                        throw new IllegalArgumentException("步骤 " + step.getId() + " 引用不存在的上游: " + inputId);
+                        throw new BadRequestException("步骤 " + step.getId() + " 引用不存在的上游: " + inputId);
                     }
                 }
             }
@@ -110,7 +111,7 @@ public class PipelineExecutor {
         }
 
         if (processed != steps.size()) {
-            throw new IllegalStateException("管线存在循环依赖");
+            throw new BadRequestException("管线存在循环依赖");
         }
         return layers;
     }

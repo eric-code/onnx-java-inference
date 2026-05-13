@@ -1,6 +1,7 @@
 package com.kudosol.ai.inference.engine;
 
 import ai.onnxruntime.OnnxJavaType;
+import com.kudosol.ai.inference.exception.BadRequestException;
 
 public final class OnnxTypeMapper {
 
@@ -18,7 +19,7 @@ public final class OnnxTypeMapper {
             case UINT8 -> "uint8";
             case BOOL -> "bool";
             case STRING -> "string";
-            default -> throw new IllegalArgumentException("暂不支持的 ONNX 类型: " + type);
+            default -> throw new BadRequestException("暂不支持的 ONNX 类型: " + type);
         };
     }
 }
