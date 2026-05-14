@@ -1,6 +1,8 @@
 name: sample-model
 version: "1.0"
 description: XGBoost 示例模型（步骤管线，零 Java 代码）
+api-keys:
+  - sk-67efb7ea8abfc5fcadd5177b85d297e77d4823f41daba027
 
 preprocess:
   - step: parse_json

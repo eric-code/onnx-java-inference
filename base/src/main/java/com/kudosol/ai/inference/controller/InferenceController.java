@@ -8,6 +8,7 @@ import com.kudosol.ai.inference.engine.ModelManager;
 import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.exception.ForbiddenException;
 import com.kudosol.ai.inference.exception.PayloadTooLargeException;
+import com.kudosol.ai.inference.exception.UnauthorizedException;
 import com.kudosol.ai.inference.protocol.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -77,41 +78,16 @@ public class InferenceController {
     }
 
     private void checkModelAccess(String modelName, HttpServletRequest request) {
-        String apiKey = (String) request.getAttribute(ApiKeyFilter.API_KEY_ATTR);
-        if (apiKey == null) return;
-
         ModelContainer container = modelManager.getModel(modelName);
+        List<String> modelKeys = container.getApiKeys();
+        if (modelKeys == null || modelKeys.isEmpty()) return;
 
-        boolean modelYmlAllows = checkModelYmlAccess(container, apiKey);
-        boolean globalMappingAllows = checkGlobalMappingAccess(modelName, apiKey);
-
-        boolean hasModelLevelConfig = container.getApiKeys() != null && !container.getApiKeys().isEmpty();
-        boolean hasGlobalMapping = !properties.getApiKeyModels().isEmpty();
-
-        if (!hasModelLevelConfig && !hasGlobalMapping) return;
-
-        if (hasModelLevelConfig && hasGlobalMapping) {
-            if (!modelYmlAllows || !globalMappingAllows) {
-                throw new ForbiddenException("API Key 无权访问模型: " + modelName);
-            }
-        } else if (hasModelLevelConfig && !modelYmlAllows) {
-            throw new ForbiddenException("API Key 无权访问模型: " + modelName);
-        } else if (hasGlobalMapping && !globalMappingAllows) {
+        String apiKey = (String) request.getAttribute(ApiKeyFilter.API_KEY_ATTR);
+        if (apiKey == null) {
+            throw new UnauthorizedException("访问模型 '%s' 需要 API Key".formatted(modelName));
+        }
+        if (!modelKeys.contains(apiKey)) {
             throw new ForbiddenException("API Key 无权访问模型: " + modelName);
         }
-    }
-
-    private boolean checkModelYmlAccess(ModelContainer container, String apiKey) {
-        List<String> modelKeys = container.getApiKeys();
-        if (modelKeys == null || modelKeys.isEmpty()) return true;
-        return modelKeys.contains(apiKey);
-    }
-
-    private boolean checkGlobalMappingAccess(String modelName, String apiKey) {
-        Map<String, List<String>> mapping = properties.getApiKeyModels();
-        if (mapping.isEmpty()) return true;
-        List<String> allowedModels = mapping.get(apiKey);
-        if (allowedModels == null) return false;
-        return allowedModels.contains(modelName);
     }
 }

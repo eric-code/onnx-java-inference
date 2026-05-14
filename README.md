@@ -136,7 +136,15 @@ onnx-java-inference/
 │       │   ├── ModelContainer.java          # 单模型运行时容器
 │       │   └── ModelClassLoader.java        # 动态加载前后处理 JAR
 │       ├── exception/
-│       │   └── InferenceExceptionHandler.java # 全局异常处理
+│       │   ├── InferenceExceptionHandler.java # 全局异常处理
+│       │   ├── BusinessException.java         # 业务异常基类
+│       │   ├── BadRequestException.java       # 400
+│       │   ├── UnauthorizedException.java     # 401
+│       │   ├── ForbiddenException.java        # 403
+│       │   ├── NotFoundException.java         # 404
+│       │   ├── PayloadTooLargeException.java  # 413
+│       │   ├── TooManyRequestException.java   # 429
+│       │   └── RequestTimeoutException.java   # 503
 │       ├── host/
 │       │   ├── HostNetworkService.java      # 宿主机 /proc/net 解析
 │       │   └── ListeningPort.java           # 监听端口记录
@@ -203,71 +211,37 @@ onnx-java-inference/
 
 ### API Key 认证
 
-通过环境变量 `API_KEYS` 配置全局 API Key，启用后所有业务接口（含 WebSocket）需携带 `X-API-Key` 请求头。仅健康检查（
-`/actuator`
-）路径免鉴权，因为 K8s 探针和负载均衡器不会携带自定义头。未配置 `API_KEYS` 时鉴权自动跳过，不影响现有部署。
-
-```bash
-# 未携带 Key → 401
-curl http://localhost:8080/models
-# → {"code":401,"data":null,"error":"无效或缺失 API Key"}
-
-# 携带正确 Key → 200
-curl -H "X-API-Key: sk-your-key" http://localhost:8080/models
-
-# 健康检查免鉴权
-curl http://localhost:8080/actuator/health
-```
-
-#### 模型级权限控制
-
-全局认证通过后，可进一步限制某个 Key 只能访问特定模型。支持两种配置方式，可单独使用或组合使用：
-
-**方式一：model.yml 声明**（去中心化，模型所有者自行管控）
+通过 `model.yml` 中的 `api-keys` 字段为模型配置访问密钥。声明了 `api-keys` 的模型要求请求携带 `X-API-Key` 头且 Key
+在列表中，未声明的模型开放访问。
 
 ```yaml
 name: my-model
 version: "1.0"
 api-keys:
-  - sk-team-a-001
-  - sk-team-a-002
+  - sk-67efb7ea8abfc5fcadd5177b85d297e77d4823f41daba027
 preprocess:
   - step: parse_json
   - step: to_tensor
     params: { field: input }
 ```
 
-声明 `api-keys` 后，只有列表中的 Key 能访问该模型，其他 Key 返回 403。
-
-**方式二：application.yml 集中映射**（运维侧集中管控）
-
-```yaml
-inference:
-  api-keys: sk-key-a,sk-key-b,sk-key-c
-  api-key-models:
-    sk-key-a:
-      - model-a
-      - model-b
-    sk-key-b:
-      - model-b
-```
-
-`api-key-models` 配置 Key → 允许访问的模型列表映射。未配置映射的 Key 可访问所有模型。
-
-**组合规则**：当两种方式同时配置时，Key 必须同时满足两边的权限（取交集）。未配置任何模型级权限时，全局认证通过即可访问所有模型。
-
 ```bash
-# sk-key-b 访问 model-a → 403（不在 api-key-models 映射中）
-curl -H "X-API-Key: sk-key-b" http://localhost:8080/models/model-a
-# → {"code":403,"data":null,"error":"API Key 无权访问模型: model-a"}
+# 无 Key 访问受保护模型 → 401
+curl http://localhost:8080/models/my-model
+# → {"code":401,"data":null,"error":"访问模型 'my-model' 需要 API Key"}
 
-# sk-key-a 访问 model-a → 200
-curl -H "X-API-Key: sk-key-a" http://localhost:8080/models/model-a
+# 错误 Key 访问 → 403
+curl -H "X-API-Key: sk-wrong" http://localhost:8080/models/my-model
+# → {"code":403,"data":null,"error":"API Key 无权访问模型: my-model"}
+
+# 正确 Key 访问 → 200
+curl -H "X-API-Key: sk-67efb7ea8abfc5fcadd5177b85d297e77d4823f41daba027" http://localhost:8080/models/my-model
+
+# 未配置 api-keys 的模型 → 开放访问
+curl http://localhost:8080/models/open-model
 ```
 
 ### 推理请求示例
-
-以下示例假设未启用 API Key 认证。启用时需添加 `-H "X-API-Key: your-key"` 头。
 
 ```bash
 # 单条推理
@@ -835,11 +809,6 @@ docker run -d -p 8080:8080 \
   -e MODEL_SOURCES=http://example.com/models/sample-model.zip \
   harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 
-# 启用 API Key 认证
-docker run -d -p 8080:8080 \
-  -e API_KEYS=sk-key1,sk-key2 \
-  harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
-
 # S3 动态拉取模式
 docker run -d -p 8080:8080 \
   -e S3_ENABLED=true \
@@ -874,8 +843,6 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 | `S3_ACCESS_KEY`             | -          | S3 Access Key                        |
 | `S3_SECRET_KEY`             | -          | S3 Secret Key                        |
 | `S3_PATH_STYLE_ACCESS`      | false      | 是否使用 Path Style 访问（MinIO 需设为 true）   |
-| `API_KEYS`                  | -          | API Key 列表，逗号分隔，未配置时鉴权自动跳过           |
-| `API_KEY_MODELS`            | -          | Key-模型权限映射（YAML map 格式，建议在配置文件中设置）   |
 | `MAX_REQUEST_SIZE`          | 50MB       | HTTP 请求体最大大小                         |
 | `MAX_CONCURRENT_INFERENCES` | 4          | 最大并发推理数，超限返回 429                     |
 | `SHUTDOWN_TIMEOUT`          | 30s        | 优雅停机等待超时                             |
