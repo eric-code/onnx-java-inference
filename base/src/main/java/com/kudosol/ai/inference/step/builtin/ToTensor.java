@@ -3,9 +3,9 @@ package com.kudosol.ai.inference.step.builtin;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
+import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.spi.ModelMeta;
 import com.kudosol.ai.inference.spi.TensorMeta;
-import com.kudosol.ai.inference.exception.BadRequestException;
 import com.kudosol.ai.inference.step.ArrayUtils;
 import com.kudosol.ai.inference.step.Step;
 import com.kudosol.ai.inference.step.StepContextSupport;
@@ -13,6 +13,7 @@ import com.kudosol.ai.inference.step.StepContextSupport;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +54,16 @@ public class ToTensor implements Step {
         TensorMeta tensorMeta = StepContextSupport.findInput(meta, field);
         String type = tensorMeta.getType();
 
-        long[] shape = parseShape(tensorMeta.getShape(), value);
+        long[] shape = parseShape(field, tensorMeta.getShape(), value);
+
+        long actualCount = ArrayUtils.countElements(value);
+        long expectedCount = Arrays.stream(shape).reduce(1L, (a, b) -> a * b);
+        if (actualCount != expectedCount) {
+            throw new BadRequestException(
+                    "输入 '%s' 期望 %d 个元素 (shape=%s)，实际 %d 个"
+                            .formatted(field, expectedCount, Arrays.toString(shape), actualCount));
+        }
+
         OrtEnvironment env = OrtEnvironment.getEnvironment();
 
         OnnxTensor tensor;
@@ -79,7 +89,7 @@ public class ToTensor implements Step {
     }
 
     @SuppressWarnings("unchecked")
-    private long[] parseShape(Object shapeObj, Object value) {
+    private long[] parseShape(String field, Object shapeObj, Object value) {
         if (shapeObj instanceof List<?> list) {
             long[] shape = list.stream().mapToLong(v -> ((Number) v).longValue()).toArray();
 
@@ -97,6 +107,11 @@ public class ToTensor implements Step {
 
             if (dynamicCount == 1) {
                 long totalElements = ArrayUtils.countElements(value);
+                if (knownProduct > 0 && totalElements % knownProduct != 0) {
+                    throw new BadRequestException(
+                            "输入 '%s' 数据量 %d 无法整除已知维度乘积 %d"
+                                    .formatted(field, totalElements, knownProduct));
+                }
                 shape[dynamicIndex] = totalElements / knownProduct;
             } else if (dynamicCount > 1) {
                 long[] inferred = ArrayUtils.inferShape(value);
