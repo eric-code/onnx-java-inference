@@ -17,8 +17,7 @@ inference:
   download-retry-count: ${DOWNLOAD_RETRY_COUNT:2}
   download-retry-delay: ${DOWNLOAD_RETRY_DELAY:3s}
   inference-timeout: ${INFERENCE_TIMEOUT:60s}
-  api-keys: ${API_KEYS:}
-  api-key-models: ${API_KEY_MODELS:}
+
   s3:
     enabled: ${S3_ENABLED:false}
     endpoint: ${S3_ENDPOINT:}
