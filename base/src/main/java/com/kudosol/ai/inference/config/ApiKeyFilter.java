@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class ApiKeyFilter extends OncePerRequestFilter {
 
     private static final String HEADER = "X-API-Key";
-    private static final Set<String> PUBLIC_PATHS = Set.of("/actuator", "/ws");
+    private static final Set<String> PUBLIC_PATHS = Set.of("/actuator");
     private static final byte[] UNAUTHORIZED_BODY = """
             {"code":401,"data":null,"error":"无效或缺失 API Key"}"""
             .getBytes(StandardCharsets.UTF_8);

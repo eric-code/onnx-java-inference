@@ -125,6 +125,7 @@ onnx-java-inference/
 │       │   ├── InferenceProperties.java     # inference.* 配置
 │       │   ├── S3Properties.java            # inference.s3.* 配置
 │       │   ├── HostProcProperties.java      # host-proc.* 配置
+│       │   ├── ApiKeyFilter.java            # API Key 认证过滤器
 │       │   └── WebSocketConfig.java         # STOMP WebSocket 配置
 │       ├── controller/
 │       │   ├── InferenceController.java     # 推理 & 模型 API
@@ -200,7 +201,26 @@ onnx-java-inference/
 | GET  | `/actuator/health/liveness`  | 进程存活状态（K8s livenessProbe）                       |
 | GET  | `/actuator/health/readiness` | 服务就绪状态（含模型加载检查，K8s readinessProbe）              |
 
+### API Key 认证
+
+通过环境变量 `API_KEYS` 配置 API Key，启用后所有业务接口（含 WebSocket）需携带 `X-API-Key` 请求头。仅健康检查（`/actuator`
+）路径免鉴权，因为 K8s 探针和负载均衡器不会携带自定义头。未配置 `API_KEYS` 时鉴权自动跳过，不影响现有部署。
+
+```bash
+# 未配置 API_KEYS 或未携带 Key → 401
+curl http://localhost:8080/models
+# → {"code":401,"data":null,"error":"无效或缺失 API Key"}
+
+# 携带正确 Key → 200
+curl -H "X-API-Key: sk-your-key" http://localhost:8080/models
+
+# 健康检查免鉴权
+curl http://localhost:8080/actuator/health
+```
+
 ### 推理请求示例
+
+以下示例假设未启用 API Key 认证。启用时需添加 `-H "X-API-Key: your-key"` 头。
 
 ```bash
 # 单条推理
@@ -768,6 +788,11 @@ docker run -d -p 8080:8080 \
   -e MODEL_SOURCES=http://example.com/models/sample-model.zip \
   harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
 
+# 启用 API Key 认证
+docker run -d -p 8080:8080 \
+  -e API_KEYS=sk-key1,sk-key2 \
+  harbor.tianyishuju.com/skyease/onnx-java-inference-base:latest
+
 # S3 动态拉取模式
 docker run -d -p 8080:8080 \
   -e S3_ENABLED=true \
@@ -790,18 +815,26 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 
 ### 环境变量
 
-| 变量                       | 默认值        | 说明                                   |
-|--------------------------|------------|--------------------------------------|
-| `INFERENCE_THREAD_COUNT` | 4          | ONNX Runtime 推理线程数                   |
-| `MODEL_SOURCES`          | -          | 模型包来源列表（`s3://` 或 `http(s)://`），逗号分隔 |
-| `HOST_PROC_PATH`         | /host/proc | 宿主机 /proc 挂载路径，用于监听端口查询              |
-| `S3_ENABLED`             | false      | 是否启用 S3 模型下载                         |
-| `S3_ENDPOINT`            | -          | S3 兼容端点（MinIO 等需设置）                  |
-| `S3_REGION`              | us-east-1  | S3 Region                            |
-| `S3_BUCKET`              | -          | S3 Bucket 名称                         |
-| `S3_ACCESS_KEY`          | -          | S3 Access Key                        |
-| `S3_SECRET_KEY`          | -          | S3 Secret Key                        |
-| `S3_PATH_STYLE_ACCESS`   | false      | 是否使用 Path Style 访问（MinIO 需设为 true）   |
+| 变量                          | 默认值        | 说明                                   |
+|-----------------------------|------------|--------------------------------------|
+| `INFERENCE_THREAD_COUNT`    | 4          | ONNX Runtime 推理线程数                   |
+| `MODEL_SOURCES`             | -          | 模型包来源列表（`s3://` 或 `http(s)://`），逗号分隔 |
+| `HOST_PROC_PATH`            | /host/proc | 宿主机 /proc 挂载路径，用于监听端口查询              |
+| `S3_ENABLED`                | false      | 是否启用 S3 模型下载                         |
+| `S3_ENDPOINT`               | -          | S3 兼容端点（MinIO 等需设置）                  |
+| `S3_REGION`                 | us-east-1  | S3 Region                            |
+| `S3_BUCKET`                 | -          | S3 Bucket 名称                         |
+| `S3_ACCESS_KEY`             | -          | S3 Access Key                        |
+| `S3_SECRET_KEY`             | -          | S3 Secret Key                        |
+| `S3_PATH_STYLE_ACCESS`      | false      | 是否使用 Path Style 访问（MinIO 需设为 true）   |
+| `API_KEYS`                  | -          | API Key 列表，逗号分隔，未配置时鉴权自动跳过           |
+| `MAX_REQUEST_SIZE`          | 50MB       | HTTP 请求体最大大小                         |
+| `MAX_CONCURRENT_INFERENCES` | 4          | 最大并发推理数，超限返回 429                     |
+| `SHUTDOWN_TIMEOUT`          | 30s        | 优雅停机等待超时                             |
+| `DOWNLOAD_TIMEOUT`          | 5m         | 模型下载超时                               |
+| `DOWNLOAD_RETRY_COUNT`      | 2          | 模型下载重试次数                             |
+| `DOWNLOAD_RETRY_DELAY`      | 3s         | 模型下载重试初始延迟                           |
+| `INFERENCE_TIMEOUT`         | 60s        | 推理超时时间                               |
 
 ## 注意事项
 
