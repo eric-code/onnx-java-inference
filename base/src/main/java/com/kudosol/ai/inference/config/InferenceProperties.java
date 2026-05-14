@@ -17,6 +17,10 @@ public class InferenceProperties {
 
     private List<String> modelSources = List.of();
 
+    public void setModelSources(List<String> modelSources) {
+        this.modelSources = (modelSources != null) ? modelSources : List.of();
+    }
+
     private long maxRequestSize = 50 * 1024 * 1024;
 
     private int maxConcurrentInferences = Runtime.getRuntime().availableProcessors();
@@ -31,5 +35,13 @@ public class InferenceProperties {
 
     private List<String> apiKeys = List.of();
 
+    public void setApiKeys(List<String> apiKeys) {
+        this.apiKeys = (apiKeys != null) ? apiKeys : List.of();
+    }
+
     private Map<String, List<String>> apiKeyModels = Map.of();
+
+    public void setApiKeyModels(Map<String, List<String>> apiKeyModels) {
+        this.apiKeyModels = (apiKeyModels != null) ? apiKeyModels : Map.of();
+    }
 }

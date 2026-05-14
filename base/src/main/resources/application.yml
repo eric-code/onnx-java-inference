@@ -11,7 +11,7 @@ spring:
 inference:
   model-dir: /models
   thread-count: ${INFERENCE_THREAD_COUNT:4}
-  model-sources: ${MODEL_SOURCES}
+  model-sources: ${MODEL_SOURCES:}
   max-concurrent-inferences: ${MAX_CONCURRENT_INFERENCES:4}
   download-timeout: ${DOWNLOAD_TIMEOUT:5m}
   download-retry-count: ${DOWNLOAD_RETRY_COUNT:2}
