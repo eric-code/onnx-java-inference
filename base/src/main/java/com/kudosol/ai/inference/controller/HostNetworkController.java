@@ -2,6 +2,7 @@ package com.kudosol.ai.inference.controller;
 
 import com.kudosol.ai.inference.host.HostNetworkService;
 import com.kudosol.ai.inference.host.ListeningPort;
+import com.kudosol.ai.inference.protocol.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,11 +19,8 @@ public class HostNetworkController {
     private final HostNetworkService hostNetworkService;
 
     @GetMapping("/ports")
-    public Map<String, Object> getListeningPorts() {
+    public ApiResponse<Map<String, Object>> getListeningPorts() {
         List<ListeningPort> ports = hostNetworkService.getListeningPorts();
-        return Map.of(
-                "count", ports.size(),
-                "ports", ports
-        );
+        return ApiResponse.ok(Map.of("count", ports.size(), "ports", ports));
     }
 }

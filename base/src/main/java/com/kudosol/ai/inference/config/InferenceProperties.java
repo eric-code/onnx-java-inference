@@ -27,4 +27,6 @@ public class InferenceProperties {
     private Duration downloadRetryDelay = Duration.ofSeconds(3);
 
     private Duration inferenceTimeout = Duration.ofSeconds(60);
+
+    private List<String> apiKeys = List.of();
 }
