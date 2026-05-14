@@ -6,6 +6,7 @@ import com.kudosol.ai.inference.spi.Preprocessor;
 import lombok.Getter;
 
 import java.time.Duration;
+import java.util.List;
 
 @Getter
 public class ModelContainer implements AutoCloseable {
@@ -13,15 +14,17 @@ public class ModelContainer implements AutoCloseable {
     private final String name;
     private final String version;
     private final Duration timeout;
+    private final List<String> apiKeys;
     private final OrtSession session;
     private final Preprocessor preprocessor;
     private final Postprocessor postprocessor;
 
-    public ModelContainer(String name, String version, Duration timeout, OrtSession session,
-                          Preprocessor preprocessor, Postprocessor postprocessor) {
+    public ModelContainer(String name, String version, Duration timeout, List<String> apiKeys,
+                          OrtSession session, Preprocessor preprocessor, Postprocessor postprocessor) {
         this.name = name;
         this.version = version;
         this.timeout = timeout;
+        this.apiKeys = apiKeys;
         this.session = session;
         this.preprocessor = preprocessor;
         this.postprocessor = postprocessor;

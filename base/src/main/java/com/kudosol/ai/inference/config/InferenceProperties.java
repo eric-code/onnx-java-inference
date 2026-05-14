@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @ConfigurationProperties(prefix = "inference")
@@ -29,4 +30,6 @@ public class InferenceProperties {
     private Duration inferenceTimeout = Duration.ofSeconds(60);
 
     private List<String> apiKeys = List.of();
+
+    private Map<String, List<String>> apiKeyModels = Map.of();
 }

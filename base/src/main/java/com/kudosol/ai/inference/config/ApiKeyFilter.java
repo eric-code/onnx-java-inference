@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class ApiKeyFilter extends OncePerRequestFilter {
 
+    public static final String API_KEY_ATTR = "X-API-Key";
     private static final String HEADER = "X-API-Key";
     private static final Set<String> PUBLIC_PATHS = Set.of("/actuator");
     private static final byte[] UNAUTHORIZED_BODY = """
@@ -44,6 +45,7 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String key = request.getHeader(HEADER);
         if (key != null && validKeys.contains(key)) {
+            request.setAttribute(API_KEY_ATTR, key);
             filterChain.doFilter(request, response);
             return;
         }

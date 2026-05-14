@@ -203,11 +203,12 @@ onnx-java-inference/
 
 ### API Key 认证
 
-通过环境变量 `API_KEYS` 配置 API Key，启用后所有业务接口（含 WebSocket）需携带 `X-API-Key` 请求头。仅健康检查（`/actuator`
+通过环境变量 `API_KEYS` 配置全局 API Key，启用后所有业务接口（含 WebSocket）需携带 `X-API-Key` 请求头。仅健康检查（
+`/actuator`
 ）路径免鉴权，因为 K8s 探针和负载均衡器不会携带自定义头。未配置 `API_KEYS` 时鉴权自动跳过，不影响现有部署。
 
 ```bash
-# 未配置 API_KEYS 或未携带 Key → 401
+# 未携带 Key → 401
 curl http://localhost:8080/models
 # → {"code":401,"data":null,"error":"无效或缺失 API Key"}
 
@@ -216,6 +217,52 @@ curl -H "X-API-Key: sk-your-key" http://localhost:8080/models
 
 # 健康检查免鉴权
 curl http://localhost:8080/actuator/health
+```
+
+#### 模型级权限控制
+
+全局认证通过后，可进一步限制某个 Key 只能访问特定模型。支持两种配置方式，可单独使用或组合使用：
+
+**方式一：model.yml 声明**（去中心化，模型所有者自行管控）
+
+```yaml
+name: my-model
+version: "1.0"
+api-keys:
+  - sk-team-a-001
+  - sk-team-a-002
+preprocess:
+  - step: parse_json
+  - step: to_tensor
+    params: { field: input }
+```
+
+声明 `api-keys` 后，只有列表中的 Key 能访问该模型，其他 Key 返回 403。
+
+**方式二：application.yml 集中映射**（运维侧集中管控）
+
+```yaml
+inference:
+  api-keys: sk-key-a,sk-key-b,sk-key-c
+  api-key-models:
+    sk-key-a:
+      - model-a
+      - model-b
+    sk-key-b:
+      - model-b
+```
+
+`api-key-models` 配置 Key → 允许访问的模型列表映射。未配置映射的 Key 可访问所有模型。
+
+**组合规则**：当两种方式同时配置时，Key 必须同时满足两边的权限（取交集）。未配置任何模型级权限时，全局认证通过即可访问所有模型。
+
+```bash
+# sk-key-b 访问 model-a → 403（不在 api-key-models 映射中）
+curl -H "X-API-Key: sk-key-b" http://localhost:8080/models/model-a
+# → {"code":403,"data":null,"error":"API Key 无权访问模型: model-a"}
+
+# sk-key-a 访问 model-a → 200
+curl -H "X-API-Key: sk-key-a" http://localhost:8080/models/model-a
 ```
 
 ### 推理请求示例
@@ -828,6 +875,7 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 | `S3_SECRET_KEY`             | -          | S3 Secret Key                        |
 | `S3_PATH_STYLE_ACCESS`      | false      | 是否使用 Path Style 访问（MinIO 需设为 true）   |
 | `API_KEYS`                  | -          | API Key 列表，逗号分隔，未配置时鉴权自动跳过           |
+| `API_KEY_MODELS`            | -          | Key-模型权限映射（YAML map 格式，建议在配置文件中设置）   |
 | `MAX_REQUEST_SIZE`          | 50MB       | HTTP 请求体最大大小                         |
 | `MAX_CONCURRENT_INFERENCES` | 4          | 最大并发推理数，超限返回 429                     |
 | `SHUTDOWN_TIMEOUT`          | 30s        | 优雅停机等待超时                             |

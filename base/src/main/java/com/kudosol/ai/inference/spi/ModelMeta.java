@@ -13,6 +13,7 @@ public class ModelMeta {
     private String version;
     private String description;
     private Duration timeout;
+    private List<String> apiKeys;
     private List<TensorMeta> inputs = new ArrayList<>();
     private List<TensorMeta> outputs = new ArrayList<>();
     private List<PipelineStep> preprocess;

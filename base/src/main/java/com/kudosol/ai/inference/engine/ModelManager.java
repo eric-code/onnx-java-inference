@@ -127,7 +127,7 @@ public class ModelManager implements ApplicationRunner {
             session.getOutputInfo().forEach((name, info) ->
                     log.info("  输出 [{}]: {}", name, info.getInfo()));
 
-            models.put(modelName, new ModelContainer(modelName, meta.getVersion(), meta.getTimeout(), session, preprocessor, postprocessor));
+            models.put(modelName, new ModelContainer(modelName, meta.getVersion(), meta.getTimeout(), meta.getApiKeys(), session, preprocessor, postprocessor));
             log.info("模型 [{}] v{} 加载成功", modelName, meta.getVersion());
         } catch (Exception e) {
             throw new IllegalStateException("加载模型 [%s] 失败: %s".formatted(modelName, e.getMessage()), e);
@@ -235,13 +235,18 @@ public class ModelManager implements ApplicationRunner {
         }
 
         ModelMeta meta = new ModelMeta();
-        meta.setName((String) raw.getOrDefault("name", ""));
-        meta.setVersion((String) raw.getOrDefault("version", "unknown"));
-        meta.setDescription((String) raw.getOrDefault("description", ""));
+        meta.setName(Objects.toString(raw.getOrDefault("name", ""), ""));
+        meta.setVersion(Objects.toString(raw.getOrDefault("version", "unknown"), ""));
+        meta.setDescription(Objects.toString(raw.getOrDefault("description", ""), ""));
 
         Object timeoutValue = raw.get("timeout");
         if (timeoutValue != null) {
             meta.setTimeout(parseDuration(timeoutValue));
+        }
+
+        Object apiKeysValue = raw.get("api-keys");
+        if (apiKeysValue instanceof List<?> list) {
+            meta.setApiKeys(list.stream().map(Object::toString).toList());
         }
 
         List<Map<String, Object>> rawPreprocess = (List<Map<String, Object>>) raw.get("preprocess");
@@ -264,8 +269,8 @@ public class ModelManager implements ApplicationRunner {
     @SuppressWarnings("unchecked")
     private PipelineStep parsePipelineStep(String modelName, Map<String, Object> raw) {
         PipelineStep step = new PipelineStep();
-        step.setId((String) raw.get("id"));
-        step.setStep((String) raw.get("step"));
+        step.setId(Objects.toString(raw.get("id"), null));
+        step.setStep(Objects.toString(raw.get("step"), null));
         step.setParams((Map<String, Object>) raw.get("params"));
         step.setInputs((List<String>) raw.get("inputs"));
 
