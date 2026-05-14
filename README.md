@@ -884,6 +884,112 @@ java -jar base/target/onnx-java-inference-base-1.0.0-SNAPSHOT-exec.jar \
 | `DOWNLOAD_RETRY_DELAY`      | 3s         | 模型下载重试初始延迟                           |
 | `INFERENCE_TIMEOUT`         | 60s        | 推理超时时间                               |
 
+## 输入校验
+
+采用**三层校验**架构：Controller 手动守卫 → Step 就近校验 → 全局异常兜底。
+
+### 三层职责与边界
+
+| 层 | 位置 | 职责 | 校验内容 | 不做什么 |
+|---|---|---|---|---|
+| **Controller 守卫** | `InferenceController` | 传输层门禁 | `modelName` 非空/格式白名单、`inputData` 非空/大小 | 不校验业务语义（shape、参数范围） |
+| **Step 就近校验** | 各 `Step.execute()` | 业务层语义 | 张量形状一致性、动态维度整除性、参数范围 | 不重复校验 Controller 已守卫的非空/格式 |
+| **全局异常兜底** | `InferenceExceptionHandler` | 框架级异常兜底 | 参数类型不匹配、缺少必要参数、请求方法错误、请求体格式错误 | 不补充业务校验逻辑 |
+
+### 约定
+
+1. **Controller 只做传输层校验**——防止非法输入穿透到业务层（如路径穿越的 modelName、空请求体）。这些校验与具体模型无关，对所有接口通用
+2. **Step 只做业务语义校验**——每个 Step 知道自己需要什么数据，就近校验最准确。例如 `ToTensor` 校验元素数是否匹配模型 shape，`TopK` 校验 topK 在 1-100 之间
+3. **全局异常兜底只处理框架异常**——Spring MVC 抛出的 `MethodArgumentTypeMismatchException`、`MissingServletRequestParameterException` 等，这些不是业务代码能 catch 的
+4. **不跨层重复校验**——Controller 已守卫的非空/格式检查，Step 内不作为主防线重复；Step 内的防御性 null 检查（如 `value == null`）属于防御编程，不是主防线
+5. **管理类接口如果未来引入 JSON 请求体**，可使用 DTO + `@Valid` 声明式校验，与三层模式并存不冲突
+
+### 模型名称格式白名单
+
+`modelName` 在系统中会被拼进路径：
+
+```
+/models/{modelName}/model.onnx    ← 文件系统
+s3://bucket/{modelName}.tar.gz    ← S3 路径
+```
+
+因此必须防止路径穿越。白名单正则 `[a-zA-Z0-9_.\\-]+` 只允许以下字符：
+
+| 允许的字符 | 示例 |
+|---|---|
+| 大小写字母 | `a-z` `A-Z` |
+| 数字 | `0-9` |
+| 下划线 | `_` |
+| 点号 | `.` |
+| 连字符 | `-` |
+
+合法名称：`iris-v2`、`resnet50`、`my.model_v1`
+
+路径穿越的核心手段是用 `/` 或 `\` 跳出当前目录（如 `../../etc/passwd`），白名单排除了所有路径相关的特殊字符：
+
+| 被排除的字符 | 危险原因 |
+|---|---|
+| `/` `\` | 路径分隔符，穿越的核心手段 |
+| 空格 | 可用于注入额外参数 |
+| `%` | URL 编码前缀，防止二次解码绕过 |
+| `?` `#` `&` | URL 查询参数注入 |
+| `..` | 虽然点号允许，但没有 `/` 配合就无法构成 `../` 跳转 |
+
+本质：`modelName` 只能是一个扁平的文件名，不能包含目录结构。
+
+### 校验示例
+
+**Controller 守卫**（传输层）：
+
+```java
+// modelName 格式白名单，防止路径穿越
+if (!modelName.matches("[a-zA-Z0-9_.\\-]+")) {
+    throw new BadRequestException("模型名称格式非法");
+}
+// 请求体非空
+if (inputData == null || inputData.length == 0) {
+    throw new BadRequestException("请求体不能为空");
+}
+```
+
+**Step 就近校验**（业务层）：
+
+```java
+// ToTensor: 元素数必须匹配模型 shape
+if (actualCount != expectedCount) {
+    throw new BadRequestException(
+        "输入 '%s' 期望 %d 个元素 (shape=%s)，实际 %d 个"
+            .formatted(field, expectedCount, Arrays.toString(shape), actualCount));
+}
+// ToTensor: 动态维度必须能整除
+if (totalElements % knownProduct != 0) {
+    throw new BadRequestException(
+        "输入 '%s' 数据量 %d 无法整除已知维度乘积 %d"
+            .formatted(field, totalElements, knownProduct));
+}
+```
+
+**全局异常兜底**：
+
+```java
+@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(...) {
+    return fail(400, "参数类型错误: " + e.getName());
+}
+```
+
+### 错误响应
+
+所有校验失败统一通过 `ApiResponse` 返回，HTTP 状态码与业务码一致：
+
+| 场景 | HTTP 状态码 | 错误示例 |
+|---|---|---|
+| 模型名称格式非法 | 400 | `{"code":400,"data":null,"error":"模型名称格式非法"}` |
+| 请求体为空 | 400 | `{"code":400,"data":null,"error":"请求体不能为空"}` |
+| 张量元素数不匹配 | 400 | `{"code":400,"data":null,"error":"输入 'float_input' 期望 6 个元素 (shape=[2, 3])，实际 5 个"}` |
+| 请求体超过大小限制 | 413 | `{"code":413,"data":null,"error":"请求体大小 ... 超过限制 ..."}` |
+| API Key 无权访问模型 | 403 | `{"code":403,"data":null,"error":"API Key 无权访问模型: ..."}` |
+
 ## 注意事项
 
 - **请求 Content-Type**：推理接口 `/infer/{modelName}` 接收 `application/octet-stream`，请求体为原始字节，由 `parse_json`
