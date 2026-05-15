@@ -6,6 +6,7 @@ import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 import com.kudosol.ai.inference.config.InferenceProperties;
 import com.kudosol.ai.inference.exception.NotFoundException;
+import com.kudosol.ai.inference.source.YamlSanitizer;
 import com.kudosol.ai.inference.spi.*;
 import com.kudosol.ai.inference.step.PipelinePostprocessor;
 import com.kudosol.ai.inference.step.PipelinePreprocessor;
@@ -81,7 +82,7 @@ public class ModelManager implements ApplicationRunner {
             if (onnxFiles.size() > 1) {
                 throw new IllegalStateException("目录 " + dir.getFileName() + " 下有多个 .onnx 文件: " + onnxFiles);
             }
-            return onnxFiles.isEmpty() ? null : onnxFiles.get(0);
+            return onnxFiles.isEmpty() ? null : onnxFiles.getFirst();
         }
     }
 
@@ -94,9 +95,8 @@ public class ModelManager implements ApplicationRunner {
                 return;
             }
             ModelMeta meta;
-            try (var is = Files.newInputStream(metaFile)) {
-                meta = parseMeta(modelName, new Yaml().load(is));
-            }
+            String content = YamlSanitizer.sanitize(metaFile);
+            meta = parseMeta(modelName, new Yaml().load(content));
 
             Path onnxFile = findOnnxFile(dir);
             if (onnxFile == null) {

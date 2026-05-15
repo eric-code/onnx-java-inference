@@ -15,7 +15,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
-import org.yaml.snakeyaml.Yaml;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -39,7 +38,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Comparator;
-import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -94,7 +92,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
                 try {
                     downloadWithRetry(source, modelDir, s3Client);
                 } catch (Exception e) {
-                    log.error("模型下载最终失败，跳过: {} — {}", source, e.getMessage());
+                    log.error("模型加载最终失败，跳过: {} — {}", source, e.getMessage());
                 }
             }
         } finally {
@@ -113,11 +111,11 @@ public class ModelSourceDownloader implements ApplicationRunner {
             } catch (Exception e) {
                 if (attempt == maxAttempts) {
                     throw new IllegalStateException(
-                            "模型下载失败 (已重试 %d 次): %s — %s".formatted(
+                            "模型加载失败 (已重试 %d 次): %s — %s".formatted(
                                     inferenceProperties.getDownloadRetryCount(), source, e.getMessage()), e);
                 }
                 long delayMs = baseDelay.toMillis() * (1L << (attempt - 1));
-                log.warn("模型下载失败 (尝试 {}/{}): {} — {}，{}ms 后重试",
+                log.warn("模型加载失败 (尝试 {}/{}): {} — {}，{}ms 后重试",
                         attempt, maxAttempts, source, e.getMessage(), delayMs);
                 try {
                     Thread.sleep(delayMs);
@@ -130,13 +128,12 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private void downloadAndExtract(String source, Path modelDir, S3Client s3Client) {
-        log.info("下载模型包: {}", source);
-
         Path tempFile = null;
         Path staging = null;
         try {
             tempFile = Files.createTempFile("model-download-", ".pkg");
 
+            log.info("下载模型包: {}", source);
             if (source.startsWith("s3://")) {
                 downloadFromS3(s3Client, source, tempFile);
             } else if (source.startsWith("http://") || source.startsWith("https://")) {
@@ -144,6 +141,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
             } else {
                 throw new BadRequestException("不支持的模型来源格式: " + source);
             }
+            log.info("模型包下载完成: {}", source);
 
             staging = Files.createTempDirectory(modelDir, STAGING_PREFIX);
             extract(tempFile, staging);
@@ -162,7 +160,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
                 deleteRecursively(target);
             }
             Files.move(metaFile.getParent(), target, StandardCopyOption.ATOMIC_MOVE);
-            log.info("模型包 [{}] 下载并解压完成", modelName);
+            log.info("模型 [{}] 加载完成", modelName);
         } catch (S3Exception e) {
             throw new IllegalStateException("从 S3 下载失败 %s: %s".formatted(source, e.getMessage()), e);
         } catch (IOException | InterruptedException e) {
@@ -285,14 +283,20 @@ public class ModelSourceDownloader implements ApplicationRunner {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private String readModelName(Path metaFile) throws IOException {
-        try (InputStream in = Files.newInputStream(metaFile)) {
-            Object raw = new Yaml().load(in);
-            if (!(raw instanceof Map)) return null;
-            Object name = ((Map<String, Object>) raw).get("name");
-            return name != null ? name.toString() : null;
+        for (String line : YamlSanitizer.sanitize(metaFile).split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("name:")) {
+                String name = trimmed.substring("name:".length()).trim();
+                if (name.startsWith("\"") && name.endsWith("\"")) {
+                    name = name.substring(1, name.length() - 1);
+                } else if (name.startsWith("'") && name.endsWith("'")) {
+                    name = name.substring(1, name.length() - 1);
+                }
+                return name.isBlank() ? null : name;
+            }
         }
+        return null;
     }
 
     private void cleanupStagingResidue(Path modelDir) {
@@ -343,7 +347,7 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private URI encodeQueryParams(String url) {
-        return UriComponentsBuilder.fromHttpUrl(url).build().encode().toUri();
+        return UriComponentsBuilder.fromUriString(url).build(true).encode().toUri();
     }
 
     private enum ArchiveType {
