@@ -14,6 +14,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.yaml.snakeyaml.Yaml;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -196,8 +197,9 @@ public class ModelSourceDownloader implements ApplicationRunner {
     }
 
     private void downloadFromHttp(String url, Path target) throws IOException, InterruptedException {
+        URI uri = encodeQueryParams(url);
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
+                .uri(uri)
                 .timeout(inferenceProperties.getDownloadTimeout())
                 .GET()
                 .build();
@@ -338,6 +340,10 @@ public class ModelSourceDownloader implements ApplicationRunner {
         }
 
         return builder.build();
+    }
+
+    private URI encodeQueryParams(String url) {
+        return UriComponentsBuilder.fromHttpUrl(url).build().encode().toUri();
     }
 
     private enum ArchiveType {
